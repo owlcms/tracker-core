@@ -1,6 +1,6 @@
 {
   "name": "@owlcms/tracker-core",
-  "version": "1.0.0",
+  "version": "1.0.0-beta01",
   "description": "Competition hub and WebSocket ingestion core for OWLCMS tracker",
   "type": "module",
   "main": "./src/index.js",
@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "echo 'No build step required for @owlcms/tracker-core (ESM source package)'",
+    "release": "node scripts/release.js",
     "test": "npm run test:core-smoke",
     "test:core-smoke": "node tests/smoke-test.js"
   },
