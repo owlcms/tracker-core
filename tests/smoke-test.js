@@ -2,7 +2,7 @@
 
 /**
  * Minimal smoke test to verify public API entrypoints
- * Run with: npm run test:smoke
+ * Run with: npm run test:core-smoke
  */
 
 import { competitionHub, EVENT_TYPES } from '../src/index.js';

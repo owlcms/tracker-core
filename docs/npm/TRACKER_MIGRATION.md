@@ -30,8 +30,7 @@ You are an automated coding agent working in the **owlcms-tracker** repository.
 
 ## Constraints (follow strictly)
 
-- Prefer **repo checkout + `npm link`** for team development (avoid GitHub Packages auth during development).
-- GitHub Packages auth is only for **installing published packages** (CI/production).
+- Prefer **repo checkout + `npm link`** for team development.
 - Ensure there is only **one** hub singleton in use at runtime: either direct package imports everywhere, or tracker shims that re-export the package everywhere.
 - Do not invent new APIs in core; follow [API_REFERENCE.md](./API_REFERENCE.md).
 
@@ -46,12 +45,6 @@ You are an automated coding agent working in the **owlcms-tracker** repository.
 
 2. Document preferred local dev setup (repo checkout + link):
    - Use the canonical steps in [DEVELOPER_USAGE.md](./DEVELOPER_USAGE.md).
-
-3. (Optional, only if installing published packages) Document GitHub Packages auth:
-   - `.npmrc` entries:
-     - `@owlcms:registry=https://npm.pkg.github.com`
-     - `//npm.pkg.github.com/:_authToken=<PAT>`
-   - Never commit tokens.
 
 ### Step 2 — Switch hub imports (use a shim to minimize churn)
 

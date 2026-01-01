@@ -159,49 +159,6 @@ npm run setup:linked
 
 ---
 
-#### Scenario 4: Use tracker-core without a checkout
-
-**You want to:** Use `@owlcms/tracker-core` without cloning the `tracker-core` repository
-
-**Recommended approach:** Install the published `@owlcms/tracker-core` package (public)
-
-**Setup (do this):**
-
-```bash
-# If @owlcms is published on GitHub Packages, you typically need the registry mapping
-# but NOT an auth token when the package is public.
-echo "@owlcms:registry=https://npm.pkg.github.com" >> .npmrc
-
-# Install package
-npm install @owlcms/tracker-core@^1.0.0
-```
-
-**When to use:** Consumers who just want the stable package without a source checkout
-
----
-
-#### Scenario 5: Publish tracker-core as a public package (maintainers)
-
-**You want to:** Publish `@owlcms/tracker-core` as a public package on GitHub, using GitHub Actions
-
-**Recommended approach:** Release-driven publish from `tracker-core` repo
-
-**High-level steps:**
-
-1. In `tracker-core/package.json`, ensure publish settings are correct for a public package:
-  - `name: "@owlcms/tracker-core"`
-  - `type: "module"`
-  - `publishConfig.access: "public"`
-  - `publishConfig.registry: "https://npm.pkg.github.com"`
-2. Add a GitHub Actions workflow that:
-  - runs `npm ci`
-  - runs any lightweight checks
-  - publishes on tagged releases (for example: `v1.2.3`) using `GITHUB_TOKEN`
-3. Create a release/tag to trigger the workflow.
-4. Verify install works without authentication for consumers (Scenario 4).
-
----
-
 ## Installation & Setup
 
 ### Prerequisites

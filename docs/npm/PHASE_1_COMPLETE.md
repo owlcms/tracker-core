@@ -112,7 +112,7 @@ Run to verify all public APIs are accessible:
 ```bash
 cd c:\Dev\git\tracker-core
 npm install
-npm run test:smoke
+npm run test:core-smoke
 ```
 
 Expected output:
@@ -225,13 +225,10 @@ Test 5: Scoring functions
 
 ```bash
 # Verify the package structure
-npm run test:smoke
+npm run test:core-smoke
 
 # (Future) Run full test suite
 npm test
-
-# (Future) Publish to GitHub Packages
-npm publish
 ```
 
 ---

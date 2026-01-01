@@ -14,7 +14,14 @@ You are helping build **tracker-core**, a shared NPM package for Olympic weightl
 
 **⚠️ IMPORTANT:** This is a shared library package. Changes here affect multiple consumers (owlcms-tracker, custom implementations, etc.)
 
-## 🛠️ Development Environment
+## � Agent Rules
+
+**Git Operations:**
+- **DO NOT** run `git` commands (commit, push, add, etc.) without explicit user approval.
+- You may suggest git commands, but do not execute them automatically.
+- Always ask for permission before modifying the repository history or remote state.
+
+## �🛠️ Development Environment
 
 **Operating System:** Windows with bash shell (Git Bash or WSL)
 - When generating terminal commands, use bash syntax

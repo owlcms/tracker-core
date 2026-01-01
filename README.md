@@ -23,12 +23,6 @@ Build custom scoreboards, REST APIs, vMix controllers, and other competition app
 
 ## Quick Start
 
-### Installation
-
-```bash
-npm install @owlcms/tracker-coremmands
-```
-
 ### Usage
 
 See [EXAMPLES.md](./docs/EXAMPLES.md) for code examples including:
@@ -66,7 +60,7 @@ npm link @owlcms/tracker-core
 ### Verify Installation
 
 ```bash
-npm run test:smoke
+npm run test:core-smoke
 ```
 
 ---
@@ -141,27 +135,6 @@ cd ../your-project
 npm link @owlcms/tracker-core
 ```
 
-### Published Package (Optional)
-
-For CI/production environments, the package can be published to GitHub Packages:
-
-```bash
-# In tracker-core/package.json
-"publishConfig": {
-  "access": "public",
-  "registry": "https://npm.pkg.github.com"
-}
-
-# Publish via GitHub Actions on tag
-npm publish
-```
-
-Consumers can then install without authentication (public package):
-
-```bash
-npm install @owlcms/tracker-core@^1.0.0
-```
-
 ---
 
 ## Debugging
@@ -187,7 +160,7 @@ console.log(state);
 ### Smoke Test
 
 ```bash
-npm run test:smoke
+npm run test:core-smoke
 ```
 
 ---
