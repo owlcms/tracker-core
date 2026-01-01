@@ -26,12 +26,12 @@ Build custom scoreboards, REST APIs, vMix controllers, and other competition app
 ### Installation
 
 ```bash
-npm install @owlcms/tracker-core
+npm install @owlcms/tracker-coremmands
 ```
 
 ### Usage
 
-See [EXAMPLES.md](./EXAMPLES.md) for code examples including:
+See [EXAMPLES.md](./docs/EXAMPLES.md) for code examples including:
 - Minimal Express server setup
 - Real-time data access
 - Event subscriptions (Timer, Decision, etc.)
@@ -42,7 +42,7 @@ See [EXAMPLES.md](./EXAMPLES.md) for code examples including:
 
 - **[API Reference](./docs/npm/API_REFERENCE.md)** - Complete API documentation for Hub methods, events, and utilities.
 - **[WebSocket Message Spec](./docs/WEBSOCKET_MESSAGE_SPEC.md)** - Detailed specification of the WebSocket protocol used by OWLCMS.
-- **[Examples](./EXAMPLES.md)** - Code snippets and usage patterns.
+- **[Examples](./docs/EXAMPLES.md)** - Code snippets and usage patterns.
 
 ---
 
