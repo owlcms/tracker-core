@@ -130,3 +130,135 @@ attachWebSocketToServer({
   onDisconnect: () => console.log('Disconnected')
 });
 ```
+
+## vMix Integration Example
+
+**Complete working example** - automatically switches vMix overlays based on competition events (good lift → show video, bad lift → show video, then back to scoreboard).
+
+### 1. Install Dependencies
+
+```bash
+npm install @owlcms/tracker-core express axios
+```
+
+### 2. Create `vmix-controller.js`
+
+```javascript
+import { competitionHub, EVENT_TYPES, attachWebSocketToServer } from '@owlcms/tracker-core';
+import express from 'express';
+import axios from 'axios';
+
+// vMix Configuration
+const VMIX_HOST = 'http://localhost:8088'; // vMix HTTP API
+const SCOREBOARD_INPUT = 1;  // Input number for scoreboard overlay
+const GOOD_LIFT_INPUT = 2;   // Input number for "Good Lift" video
+const BAD_LIFT_INPUT = 3;    // Input number for "Bad Lift" video
+
+// Switch vMix input
+async function switchVmixInput(inputNumber) {
+  try {
+    await axios.get(`${VMIX_HOST}/api/?Function=PreviewInput&Input=${inputNumber}`);
+    await axios.get(`${VMIX_HOST}/api/?Function=Transition&Duration=500`);
+    console.log(`[vMix] Switched to input ${inputNumber}`);
+  } catch (error) {
+    console.error('[vMix] Switch failed:', error.message);
+  }
+}
+
+// Update scoreboard overlay with athlete data
+async function updateVmixScoreboard(fopUpdate) {
+  const currentAthlete = fopUpdate?.fullName || 'No athlete';
+  const weight = fopUpdate?.weight || '--';
+  const attempt = fopUpdate?.attemptNumber || '--';
+  
+  try {
+    await axios.get(`${VMIX_HOST}/api/?Function=SetText&Input=${SCOREBOARD_INPUT}&Value=${currentAthlete}`);
+    console.log(`[vMix] Updated scoreboard: ${currentAthlete} - ${weight}kg (Attempt ${attempt})`);
+  } catch (error) {
+    console.error('[vMix] Scoreboard update failed:', error.message);
+  }
+}
+
+// Start Express server
+const app = express();
+const server = app.listen(8096, () => {
+  console.log('[Server] Running on port 8096');
+});
+
+// Attach WebSocket handler to existing server (handles OWLCMS connection automatically)
+attachWebSocketToServer({
+  server,
+  path: '/ws',
+  hub: competitionHub,
+  onConnect: () => console.log('[WebSocket] OWLCMS connected'),
+  onDisconnect: () => console.log('[WebSocket] OWLCMS disconnected')
+});
+
+// Subscribe to competition events
+competitionHub.on(EVENT_TYPES.DECISION, async ({ fopName, payload }) => {
+  console.log(`[Decision] FOP ${fopName}: ${payload.decisionEventType}`);
+  
+  if (payload.decisionEventType === 'FULL_DECISION') {
+    // Count good lifts (d1, d2, d3 are "true"/"false" strings)
+    const goodCount = [payload.d1, payload.d2, payload.d3]
+      .filter(d => d === 'true')
+      .length;
+    
+    const isGoodLift = goodCount >= 2;
+    
+    // Switch to appropriate video
+    await switchVmixInput(isGoodLift ? GOOD_LIFT_INPUT : BAD_LIFT_INPUT);
+    
+    // Return to scoreboard after 3 seconds
+    setTimeout(async () => {
+      await switchVmixInput(SCOREBOARD_INPUT);
+    }, 3000);
+  }
+});
+
+competitionHub.on(EVENT_TYPES.UPDATE, async ({ fopName, payload }) => {
+  console.log(`[Update] FOP ${fopName}: ${payload.uiEvent}`);
+  
+  if (payload.uiEvent === 'LiftingOrderUpdated') {
+    // Update scoreboard with new athlete info
+    await updateVmixScoreboard(payload);
+  }
+});
+
+competitionHub.on(EVENT_TYPES.TIMER, ({ fopName, payload }) => {
+  if (payload.athleteTimerEventType === 'StartTime') {
+    console.log(`[Timer] FOP ${fopName}: Timer started (${payload.athleteMillisRemaining}ms)`);
+  }
+});
+
+console.log('[vMix Controller] Ready - waiting for OWLCMS connection');
+console.log('[Setup] Configure OWLCMS: Prepare Competition → Language and System Settings → Connections');
+console.log('[Setup] Set "URL for Video Data" to: ws://localhost:8096/ws');
+```
+
+### 3. Configure OWLCMS
+
+In OWLCMS: **Prepare Competition → Language and System Settings → Connections → URL for Video Data**
+
+Set to: `ws://localhost:8096/ws`
+
+### 4. Configure vMix
+
+1. Create inputs in vMix:
+   - Input 1: Browser source pointing to scoreboard (e.g., `http://localhost:8096/lifting-order?fop=A`)
+   - Input 2: Video file for "Good Lift" animation
+   - Input 3: Video file for "Bad Lift" animation
+
+2. Ensure vMix HTTP API is enabled (Settings → Web Controller → Enable)
+
+### 5. Run
+
+```bash
+node vmix-controller.js
+```
+
+**What it does:**
+- ✅ Receives all OWLCMS events (decisions, timer, updates)
+- ✅ Automatically switches to good/bad lift video on referee decision
+- ✅ Returns to scoreboard after 3 seconds
+- ✅ Updates scoreboard overlay with current athlete info

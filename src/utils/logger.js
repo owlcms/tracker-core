@@ -22,7 +22,8 @@ function normalizeLogger(logger) {
     warn: typeof logger.warn === 'function' ? logger.warn.bind(logger) : baseConsole.warn,
     info: typeof logger.info === 'function' ? logger.info.bind(logger) : baseConsole.info,
     debug: typeof logger.debug === 'function' ? logger.debug.bind(logger) : baseConsole.debug,
-    trace: typeof logger.trace === 'function' ? logger.trace.bind(logger) : baseConsole.trace
+    trace: typeof logger.trace === 'function' ? logger.trace.bind(logger) : baseConsole.trace,
+    log: typeof logger.log === 'function' ? logger.log.bind(logger) : baseConsole.log
   };
 }
 
@@ -45,22 +46,29 @@ export const logger = {
   info: (...args) => currentLogger.info(`[${getTimestamp()}]`, ...args),
   debug: (...args) => currentLogger.debug(`[${getTimestamp()}]`, ...args),
   trace: (...args) => currentLogger.trace(`[${getTimestamp()}]`, ...args),
-  log: (level, ...args) => {
-    const lvl = (level || '').toString().toLowerCase();
+  log: (levelOrMessage, ...args) => {
+    const lvl = (levelOrMessage || '').toString().toLowerCase();
     const ts = `[${getTimestamp()}]`;
-    switch (lvl) {
-      case 'error':
-        return currentLogger.error(ts, ...args);
-      case 'warn':
-      case 'warning':
-        return currentLogger.warn(ts, ...args);
-      case 'debug':
-        return currentLogger.debug(ts, ...args);
-      case 'trace':
-        return currentLogger.trace(ts, ...args);
-      case 'info':
-      default:
-        return currentLogger.info(ts, ...args);
+    
+    // Check if the first argument is a known log level
+    if (['error', 'warn', 'warning', 'debug', 'trace', 'info'].includes(lvl)) {
+      switch (lvl) {
+        case 'error':
+          return currentLogger.error(ts, ...args);
+        case 'warn':
+        case 'warning':
+          return currentLogger.warn(ts, ...args);
+        case 'debug':
+          return currentLogger.debug(ts, ...args);
+        case 'trace':
+          return currentLogger.trace(ts, ...args);
+        case 'info':
+          return currentLogger.info(ts, ...args);
+      }
     }
+    
+    // If not a level, treat as a message and log with default level (info/log)
+    // We pass levelOrMessage as the first message argument
+    return currentLogger.log(ts, levelOrMessage, ...args);
   }
 };

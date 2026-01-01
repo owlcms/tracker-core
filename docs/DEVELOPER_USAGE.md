@@ -31,29 +31,20 @@ Choose your scenario to see the recommended setup:
 - WebSocket connection to OWLCMS
 - No tracker source code needed
 
-**Recommended approach:** **Source checkout + npm link**
+**Recommended approach:** **Install from GitHub**
 
-**Why:** Browse hub source code when debugging, understand data structures, see implementation examples
+**Why:** Easiest setup, no need to manage multiple repositories or symlinks.
 
 **Setup (do this):**
 
 ```bash
-# Clone hub repo (read-only reference)
-git clone https://github.com/owlcms/tracker-core.git
-cd tracker-core
-npm install
-
-# Link it globally for local development
-npm link
-
-# Create your Express app in separate directory
-cd ..
+# Create your Express app
 mkdir my-vmix-controller
 cd my-vmix-controller
 npm init -y
 
-# Link to local hub
-npm link @owlcms/tracker-core
+# Install tracker-core directly from GitHub
+npm install github:owlcms/tracker-core
 
 # Install other dependencies
 npm install express
@@ -70,25 +61,19 @@ npm install express
 - Hub as a black-box dependency
 - No need to modify hub internals
 
-**Recommended approach (post-migration):** **Clone owlcms-tracker + link tracker-core**
+**Recommended approach:** **Clone owlcms-tracker only**
 
-**Why:** Plugin development stays the same (you only edit `src/plugins/`), but `owlcms-tracker` now requires the `@owlcms/tracker-core` dependency in order to run.
+**Why:** The tracker is configured to pull the core library directly from GitHub. You don't need to manually manage the core repository.
 
 **Setup (required to run `npm run dev`):**
 
 ```bash
-# 1) Get tracker-core and link it (you don't need to edit it)
-git clone https://github.com/owlcms/tracker-core.git
-cd tracker-core
-npm install
-npm link
-
-# 2) Get owlcms-tracker and link it to your local tracker-core
-cd ..
+# 1) Get owlcms-tracker
 git clone https://github.com/owlcms/owlcms-tracker.git
 cd owlcms-tracker
+
+# 2) Install dependencies (includes @owlcms/tracker-core from GitHub)
 npm install
-npm link @owlcms/tracker-core
 
 # 3) Run the tracker
 npm run dev
@@ -97,8 +82,6 @@ npm run dev
 **Create your plugin (same workflow as today):**
 - Use an LLM to create a new folder under `src/plugins/<your-plugin>/` following the existing plugin patterns.
 - Restart the dev server if the plugin registry requires it.
-
-If you prefer installing `@owlcms/tracker-core` from a registry instead of linking, use **Scenario 4**.
 
 ---
 
@@ -144,13 +127,6 @@ npm run dev
 - Edit hub source → Save → Vite detects change → Tracker auto-reloads the affected modules (HMR)
 - **You only run the tracker** - hub is a library dependency, not a separate app
 
-**Automated setup script (tracker includes this):**
-
-```bash
-cd owlcms-tracker
-npm run setup:linked
-```
-
 **Benefits:**
 - ✅ Edit hub source code while tracker is running
 - ✅ See hub changes immediately in tracker (HMR reloads)
@@ -177,133 +153,9 @@ Follow the setup steps in your Scenario above. This section intentionally avoids
 
 **Complete working example** - automatically switches vMix overlays based on competition events (good lift → show video, bad lift → show video, then back to scoreboard).
 
-### 1. Install Dependencies
+See [vMix Integration Example](./EXAMPLES.md#vmix-integration-example) in the examples documentation.
 
-```bash
-npm install @owlcms/tracker-core express axios
-```
-
-### 2. Create `vmix-controller.js`
-
-```javascript
-import { competitionHub, EVENT_TYPES, attachWebSocketToServer } from '@owlcms/tracker-core';
-import express from 'express';
-import axios from 'axios';
-
-// vMix Configuration
-const VMIX_HOST = 'http://localhost:8088'; // vMix HTTP API
-const SCOREBOARD_INPUT = 1;  // Input number for scoreboard overlay
-const GOOD_LIFT_INPUT = 2;   // Input number for "Good Lift" video
-const BAD_LIFT_INPUT = 3;    // Input number for "Bad Lift" video
-
-// Switch vMix input
-async function switchVmixInput(inputNumber) {
-  try {
-    await axios.get(`${VMIX_HOST}/api/?Function=PreviewInput&Input=${inputNumber}`);
-    await axios.get(`${VMIX_HOST}/api/?Function=Transition&Duration=500`);
-    console.log(`[vMix] Switched to input ${inputNumber}`);
-  } catch (error) {
-    console.error('[vMix] Switch failed:', error.message);
-  }
-}
-
-// Update scoreboard overlay with athlete data
-async function updateVmixScoreboard(fopUpdate) {
-  const currentAthlete = fopUpdate?.fullName || 'No athlete';
-  const weight = fopUpdate?.weight || '--';
-  const attempt = fopUpdate?.attemptNumber || '--';
-  
-  try {
-    await axios.get(`${VMIX_HOST}/api/?Function=SetText&Input=${SCOREBOARD_INPUT}&Value=${currentAthlete}`);
-    console.log(`[vMix] Updated scoreboard: ${currentAthlete} - ${weight}kg (Attempt ${attempt})`);
-  } catch (error) {
-    console.error('[vMix] Scoreboard update failed:', error.message);
-  }
-}
-
-// Start Express server
-const app = express();
-const server = app.listen(8096, () => {
-  console.log('[Server] Running on port 8096');
-});
-
-// Attach WebSocket handler to existing server (handles OWLCMS connection automatically)
-attachWebSocketToServer({
-  server,
-  path: '/ws',
-  hub: competitionHub,
-  onConnect: () => console.log('[WebSocket] OWLCMS connected'),
-  onDisconnect: () => console.log('[WebSocket] OWLCMS disconnected')
-});
-
-// Subscribe to competition events
-competitionHub.on(EVENT_TYPES.DECISION, async ({ fopName, payload }) => {
-  console.log(`[Decision] FOP ${fopName}: ${payload.decisionEventType}`);
-  
-  if (payload.decisionEventType === 'FULL_DECISION') {
-    // Count good lifts (d1, d2, d3 are "true"/"false" strings)
-    const goodCount = [payload.d1, payload.d2, payload.d3]
-      .filter(d => d === 'true')
-      .length;
-    
-    const isGoodLift = goodCount >= 2;
-    
-    // Switch to appropriate video
-    await switchVmixInput(isGoodLift ? GOOD_LIFT_INPUT : BAD_LIFT_INPUT);
-    
-    // Return to scoreboard after 3 seconds
-    setTimeout(async () => {
-      await switchVmixInput(SCOREBOARD_INPUT);
-    }, 3000);
-  }
-});
-
-competitionHub.on(EVENT_TYPES.UPDATE, async ({ fopName, payload }) => {
-  console.log(`[Update] FOP ${fopName}: ${payload.uiEvent}`);
-  
-  if (payload.uiEvent === 'LiftingOrderUpdated') {
-    // Update scoreboard with new athlete info
-    await updateVmixScoreboard(payload);
-  }
-});
-
-competitionHub.on(EVENT_TYPES.TIMER, ({ fopName, payload }) => {
-  if (payload.athleteTimerEventType === 'StartTime') {
-    console.log(`[Timer] FOP ${fopName}: Timer started (${payload.athleteMillisRemaining}ms)`);
-  }
-});
-
-console.log('[vMix Controller] Ready - waiting for OWLCMS connection');
-console.log('[Setup] Configure OWLCMS: Prepare Competition → Language and System Settings → Connections');
-console.log('[Setup] Set "URL for Video Data" to: ws://localhost:8096/ws');
-```
-
-### 3. Configure OWLCMS
-
-In OWLCMS: **Prepare Competition → Language and System Settings → Connections → URL for Video Data**
-
-Set to: `ws://localhost:8096/ws`
-
-### 4. Configure vMix
-
-1. Create inputs in vMix:
-   - Input 1: Browser source pointing to scoreboard (e.g., `http://localhost:8096/lifting-order?fop=A`)
-   - Input 2: Video file for "Good Lift" animation
-   - Input 3: Video file for "Bad Lift" animation
-
-2. Ensure vMix HTTP API is enabled (Settings → Web Controller → Enable)
-
-### 5. Run
-
-```bash
-node vmix-controller.js
-```
-
-**What it does:**
-- ✅ Receives all OWLCMS events (decisions, timer, updates)
-- ✅ Automatically switches to good/bad lift video on referee decision
-- ✅ Returns to scoreboard after 3 seconds
-- ✅ Updates scoreboard overlay with current athlete info
+---
 
 ---
 
@@ -508,17 +360,48 @@ Changes to hub are immediately reflected in tracker during development.
 
 ---
 
+## Debugging
+
+### Enable Learning Mode
+
+When developing custom applications, it's helpful to see exactly what data OWLCMS is sending. You can enable "Learning Mode" to capture all incoming WebSocket messages to JSON files.
+
+```bash
+# In your consuming app (if it supports this env var)
+LEARNING_MODE=true node app.js
+```
+
+If you are using `owlcms-tracker`:
+
+```bash
+npm run dev:learning
+```
+
+Messages are saved to a `samples/` directory with timestamps, allowing you to inspect the exact JSON structure of updates, timer events, and database dumps.
+
+### Check Hub State
+
+You can inspect the internal state of the hub at any time:
+
+```javascript
+const state = competitionHub.getDatabaseState();
+console.log('Athletes:', state.athletes.length);
+console.log('FOPs:', competitionHub.getAvailableFOPs());
+```
+
+---
+
 ## Troubleshooting
 
-### Registry Configuration (published package)
+### Registry Configuration
 
-If you install `@owlcms/tracker-core` as a published package (Scenario 4) and it is hosted on GitHub Packages, you may need the scoped registry mapping:
+If you install directly from GitHub (Scenarios 1, 2) or use `npm link` (Scenario 3), you do **not** need any registry configuration.
+
+Only if you are installing a published version from GitHub Packages (not recommended) do you need:
 
 ```bash
 echo "@owlcms:registry=https://npm.pkg.github.com" >> ~/.npmrc
 ```
-
-If you use `npm link` (Scenario 1, 2, or 3), you do not need any registry configuration.
 
 ### Import Errors
 
@@ -555,7 +438,7 @@ competitionHub.on(EVENT_TYPES.UPDATE, ({ fopName, payload }) => {
 ## Next Steps
 
 - **Complete API Documentation:** [API_REFERENCE.md](./API_REFERENCE.md) - All hub methods, events, data structures
-- **Implementation Details:** [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) - For contributors modifying hub internals
-- **Core Repo Extraction:** [CORE_MIGRATION.md](./CORE_MIGRATION.md) - What changes to make in the new `tracker-core` repository
-- **Tracker Update Guide:** [TRACKER_MIGRATION.md](./TRACKER_MIGRATION.md) - What to change in `owlcms-tracker` to consume the package
-- **Build Custom Scoreboards:** See [CREATE_YOUR_OWN.md](../../CREATE_YOUR_OWN.md) in the tracker repo for plugin development guide
+- **Implementation Details:** [IMPLEMENTATION_PLAN.md](./migration/IMPLEMENTATION_PLAN.md) - For contributors modifying hub internals
+- **Core Repo Extraction:** [CORE_MIGRATION.md](./migration/CORE_MIGRATION.md) - What changes to make in the new `tracker-core` repository
+- **Tracker Update Guide:** [TRACKER_MIGRATION.md](./migration/TRACKER_MIGRATION.md) - What to change in `owlcms-tracker` to consume the package
+- **Build Custom Scoreboards:** See [CREATE_YOUR_OWN.md](../../owlcms-tracker/CREATE_YOUR_OWN.md) in the tracker repo for plugin development guide

@@ -231,6 +231,13 @@ export class CompetitionHub extends EventEmitter {
         timestamp: Date.now()
       });
       
+      // Also emit as EventEmitter for consumers using .on()
+      this.emit('fop_update', {
+        fop: fopName,
+        data: normalizedParams,
+        timestamp: Date.now()
+      });
+      
       // Check if we have initialized database state
       if (!this.databaseState || !this.databaseState.athletes || this.databaseState.athletes.length === 0) {
         // Only request database at this point - translations/flags will arrive via OWLCMS startup callback
@@ -359,6 +366,12 @@ export class CompetitionHub extends EventEmitter {
         payload: this.state,
         timestamp: Date.now()
       });
+      
+      // Also emit as EventEmitter for consumers using .on()
+      this.emit('competition_initialized', {
+        payload: this.state,
+        timestamp: Date.now()
+      });
 
       logger.log(`[Hub] Full competition data loaded: ${this.databaseState.competition?.name || 'unknown competition'}`);
       logger.log(`[Hub] Athletes loaded: ${this.databaseState.athletes?.length || 0}`);
@@ -385,6 +398,12 @@ export class CompetitionHub extends EventEmitter {
         logger.log('[Hub] ✅ HUB READY - Database and translations loaded');
         this.emit('hub:ready');
         
+        
+        // Also emit hub_ready_broadcast event for EventEmitter consumers
+        this.emit('hub_ready_broadcast', {
+          message: 'Hub ready - database and translations loaded',
+          timestamp: Date.now()
+        });
         // Broadcast to all connected browsers via SSE
         this.broadcast({
           type: 'hub_ready',
@@ -2006,6 +2025,12 @@ export class CompetitionHub extends EventEmitter {
         logger.log('[Hub] ✅ HUB READY - Database and translations loaded');
         this.emit('hub:ready');
         
+        
+        // Also emit hub_ready_broadcast event for EventEmitter consumers
+        this.emit('hub_ready_broadcast', {
+          message: 'Hub ready - database and translations loaded',
+          timestamp: Date.now()
+        });
         // Broadcast to all connected browsers via SSE
         this.broadcast({
           type: 'hub_ready',
@@ -2204,6 +2229,12 @@ export class CompetitionHub extends EventEmitter {
     this.translations = {};
     this.lastTranslationsChecksum = null;
     this.translationsReady = false;
+    
+    // Also emit as EventEmitter for consumers using .on()
+    this.emit('waiting', {
+      message: 'Waiting for competition data...',
+      timestamp: Date.now()
+    });
     this._hasConfirmedFops = false;
     this.broadcast({
       type: 'waiting',

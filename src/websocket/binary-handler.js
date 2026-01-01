@@ -314,6 +314,12 @@ async function handleFlagsMessage(zipBuffer, hub) {
 
 		// Update hub state
 		hub.setFlagsReady(true);
+
+		// Emit event for interested listeners
+		hub.emit('flags_loaded', {
+			count: extractedCount,
+			timestamp: Date.now()
+		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[FLAGS] ❌ ERROR after ${elapsed}ms:`, error.message);
@@ -359,6 +365,12 @@ async function handlePicturesMessage(zipBuffer, hub) {
 
 		// Update hub state
 		hub.setPicturesReady(true);
+
+		// Emit event for interested listeners
+		hub.emit('pictures_loaded', {
+			count: extractedCount,
+			timestamp: Date.now()
+		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[PICTURES] ❌ ERROR after ${elapsed}ms:`, error.message);
@@ -418,6 +430,12 @@ async function handleLogosMessage(zipBuffer, hub) {
 
 		// Update hub state
 		hub.setLogosReady(true);
+
+		// Emit event for interested listeners
+		hub.emit('logos_loaded', {
+			count: extractedCount,
+			timestamp: Date.now()
+		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[LOGOS] ❌ ERROR after ${elapsed}ms:`, error.message);

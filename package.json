@@ -14,6 +14,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "build": "echo 'No build step required for @owlcms/tracker-core (ESM source package)'",
     "test": "npm run test:core-smoke",
     "test:core-smoke": "node tests/smoke-test.js"
   },
