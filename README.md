@@ -12,16 +12,12 @@ Build custom scoreboards, REST APIs, vMix controllers, and other competition app
 
 - **Receives live competition data** from OWLCMS via WebSocket
 - **Maintains a competition hub** with athlete data, lifting order, scores, rankings, and session state
-- **Emits real-time events** that consumers can broadcast to clients (e.g. via SSE, WebSockets, or REST)
+- **Emits real-time events** that consumers can relay and further broadcast to clients (e.g. via SSE, WebSockets, or REST)
 - **Provides reusable APIs** for scoring, flag resolution, cache management, timer/decision helpers
-- **Supports standalone or attach modes** - works as a standalone HTTP server or plugs into your existing Express/Node application
+- **Supports standalone or attach modes** - works as a standalone websocket server or plugs into your existing Express/Node application
 
 **Used by:**
 - [`owlcms-tracker`](https://github.com/owlcms/owlcms-tracker) - Full-featured competition scoreboard application
-- Custom REST APIs and web services
-- vMix controllers and live broadcast systems
-- Mobile app backends
-- CLI tools and data export utilities
 
 ---
 
@@ -33,135 +29,20 @@ Build custom scoreboards, REST APIs, vMix controllers, and other competition app
 npm install @owlcms/tracker-core
 ```
 
-### Minimal Example
+### Usage
 
-```javascript
-import express from 'express';
-import { createServer } from 'http';
-import { competitionHub, attachWebSocketToServer } from '@owlcms/tracker-core';
+See [EXAMPLES.md](./EXAMPLES.md) for code examples including:
+- Minimal Express server setup
+- Real-time data access
+- Event subscriptions (Timer, Decision, etc.)
+- Scoring utilities
+- WebSocket integration modes
 
-const app = express();
-const httpServer = createServer(app);
+## Documentation
 
-// REST API endpoint
-app.get('/api/lifting-order/:fop', (req, res) => {
-  const liftingOrder = competitionHub.getLiftingOrderEntries({ fopName: req.params.fop });
-  res.json(liftingOrder);
-});
-
-// Attach WebSocket handler to existing server
-attachWebSocketToServer({
-  server: httpServer,
-  path: '/ws',
-  hub: competitionHub
-});
-
-httpServer.listen(8095, () => {
-  console.log('Server running on http://localhost:8095');
-  console.log('Configure OWLCMS: ws://localhost:8095/ws');
-});
-```
-
-### Configure OWLCMS
-
-In OWLCMS: **Prepare Competition → Language and System Settings → Connections → URL for Video Data**
-
-Set to: `ws://localhost:8095/ws`
-
----
-
-## Core Features
-
-### Real-Time Data Access
-
-```javascript
-import { competitionHub, EVENT_TYPES } from '@owlcms/tracker-core';
-
-// Get current lifter
-const current = competitionHub.getCurrentAthlete({ fopName: 'Platform A' });
-console.log(`Current: ${current.fullName} - ${current.weight}kg`);
-
-// Get lifting order
-const order = competitionHub.getLiftingOrderEntries({ fopName: 'Platform A' });
-console.log(`Next 10 athletes:`, order.slice(0, 10));
-
-// Get full database
-const db = competitionHub.getDatabaseState();
-console.log(`Total athletes: ${db.athletes.length}`);
-```
-
-### Event Subscriptions
-
-```javascript
-// React to decisions
-competitionHub.on(EVENT_TYPES.DECISION, ({ fopName, payload }) => {
-  if (payload.decisionEventType === 'FULL_DECISION') {
-    const goodCount = [payload.d1, payload.d2, payload.d3].filter(d => d === 'true').length;
-    console.log(goodCount >= 2 ? 'GOOD LIFT' : 'NO LIFT');
-  }
-});
-
-// React to timer events
-competitionHub.on(EVENT_TYPES.TIMER, ({ fopName, payload }) => {
-  console.log(`Timer: ${payload.athleteMillisRemaining}ms remaining`);
-});
-
-// Wait for hub to be ready
-competitionHub.once(EVENT_TYPES.HUB_READY, () => {
-  console.log('Ready to process queries');
-});
-```
-
-### Scoring & Utilities
-
-```javascript
-import { calculateSinclair2024, getFlagUrl, buildCacheKey } from '@owlcms/tracker-core';
-
-// Calculate scores
-const sinclair = calculateSinclair2024({ total: 220, bodyWeight: 88.5, gender: 'M' });
-console.log(`Sinclair: ${sinclair}`);
-
-// Get flag URLs
-const flagUrl = getFlagUrl({ teamName: 'USA Weightlifting' });
-// Returns: "/local/flags/USA Weightlifting.svg"
-
-// Build cache keys
-const cacheKey = buildCacheKey({ fopName: 'Platform A', opts: { gender: 'M', topN: 10 } });
-```
-
----
-
-## WebSocket Integration Modes
-
-### Mode 1: Standalone Server (Simple)
-
-```javascript
-import { createWebSocketServer } from '@owlcms/tracker-core/websocket';
-
-createWebSocketServer({
-  port: 8095,
-  path: '/ws',
-  hub: competitionHub,
-  onConnect: () => console.log('OWLCMS connected'),
-  onDisconnect: () => console.log('OWLCMS disconnected')
-});
-```
-
-### Mode 2: Inject into Existing Server (Recommended for Production)
-
-```javascript
-import { attachWebSocketToServer } from '@owlcms/tracker-core/websocket';
-
-attachWebSocketToServer({
-  server: myExpressHttpServer,
-  path: '/ws',
-  hub: competitionHub,
-  localFilesDir: '/var/lib/owlcms/local',  // Where to store flags/logos
-  localUrlPrefix: '/assets',                // URL prefix for serving files
-  onConnect: () => console.log('Connected'),
-  onDisconnect: () => console.log('Disconnected')
-});
-```
+- **[API Reference](./docs/npm/API_REFERENCE.md)** - Complete API documentation for Hub methods, events, and utilities.
+- **[WebSocket Message Spec](./docs/WEBSOCKET_MESSAGE_SPEC.md)** - Detailed specification of the WebSocket protocol used by OWLCMS.
+- **[Examples](./EXAMPLES.md)** - Code snippets and usage patterns.
 
 ---
 
