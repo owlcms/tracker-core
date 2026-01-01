@@ -6,8 +6,8 @@
  * Responsibilities:
  * - Cache competition state from OWLCMS WebSocket updates
  * - Return 428 when database is needed (WebSocket response)
- * - Convert OWLCMS data to JSON format for browsers
- * - Broadcast changes to all connected browsers via SSE
+ * - Convert OWLCMS data to JSON format for consumers
+ * - Emit events for state changes so consumers can broadcast updates
  */
 
 import { EventEmitter } from 'events';

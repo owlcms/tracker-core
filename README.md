@@ -12,7 +12,7 @@ Build custom scoreboards, REST APIs, vMix controllers, and other competition app
 
 - **Receives live competition data** from OWLCMS via WebSocket
 - **Maintains a competition hub** with athlete data, lifting order, scores, rankings, and session state
-- **Broadcasts real-time updates** to all connected browsers via SSE or direct API calls
+- **Emits real-time events** that consumers can broadcast to clients (e.g. via SSE, WebSockets, or REST)
 - **Provides reusable APIs** for scoring, flag resolution, cache management, timer/decision helpers
 - **Supports standalone or attach modes** - works as a standalone HTTP server or plugs into your existing Express/Node application
 
