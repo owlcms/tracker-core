@@ -1,0 +1,4 @@
+{
+  // Disable built-in Markdown link validation to prevent false positives
+  "markdown.validate.enabled": false
+}

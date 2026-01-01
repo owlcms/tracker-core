@@ -1,0 +1,41 @@
+{
+  "name": "@owlcms/tracker-core",
+  "version": "1.0.0",
+  "description": "Competition hub and WebSocket ingestion core for OWLCMS tracker",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./websocket": "./src/websocket/index.js",
+    "./utils": "./src/utils/index.js",
+    "./scoring": "./src/scoring/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "npm run test:smoke",
+    "test:smoke": "node tests/smoke-test.js"
+  },
+  "keywords": [
+    "owlcms",
+    "weightlifting",
+    "competition",
+    "hub",
+    "websocket"
+  ],
+  "author": "owlcms",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/owlcms/tracker-core.git"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "ws": "^8.18.3"
+  }
+}
