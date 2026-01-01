@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { isVersionAcceptable, parseVersion } from '../protocol/protocol-config.js';
 import { logger } from '../utils/logger.js';
+import { captureBinaryMessage, LEARNING_MODE } from '../utils/learning-mode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -219,6 +220,13 @@ export async function handleBinaryMessage(buffer, hub) {
 		}
 
 		// Route to handler based on message type
+		logger.info(`[BINARY] Processing message type: ${messageType} (payload: ${payload.length} bytes)`);
+		
+		// Capture binary message in learning mode
+		if (LEARNING_MODE) {
+			captureBinaryMessage(messageType, payload, { payloadSize: payload.length });
+		}
+		
 		if (messageType === 'database_zip' || messageType === 'database') {
 			await handleDatabaseZipMessage(payload, hub);
 		} else if (messageType === 'flags_zip') {
@@ -423,35 +431,83 @@ async function handleLogosMessage(zipBuffer, hub) {
  */
 async function handleDatabaseZipMessage(zipBuffer, hub) {
 	const startTime = Date.now();
+	
+	logger.info(`[DATABASE_ZIP] Processing buffer: ${zipBuffer.length} bytes, first 4 bytes: ${zipBuffer.slice(0, 4).toString('hex')}`);
 
 	try {
-		const zip = new AdmZip(zipBuffer);
-		const entries = zip.getEntries();
+		// Check if this is actually a ZIP file (magic bytes: 50 4B 03 04)
+		const isZip = zipBuffer.length >= 4 && 
+			zipBuffer[0] === 0x50 && zipBuffer[1] === 0x4B && 
+			zipBuffer[2] === 0x03 && zipBuffer[3] === 0x04;
+		
+		let jsonText;
+		let database;
+		
+		if (!isZip) {
+			// Maybe it's raw JSON, not a ZIP?
+			logger.info('[DATABASE_ZIP] Not a ZIP file - checking if raw JSON...');
+			const firstChar = String.fromCharCode(zipBuffer[0]);
+			if (firstChar === '{') {
+				logger.info('[DATABASE_ZIP] Detected raw JSON (not zipped)');
+				jsonText = zipBuffer.toString('utf8');
+				database = JSON.parse(jsonText);
+			} else {
+				logger.error(`[DATABASE_ZIP] ❌ Not a ZIP and not JSON. First byte: 0x${zipBuffer[0].toString(16)}`);
+				return;
+			}
+		} else {
+			const zip = new AdmZip(zipBuffer);
+			const entries = zip.getEntries();
+			
+			logger.info(`[DATABASE_ZIP] ZIP contains ${entries.length} entries: ${entries.map(e => e.entryName).join(', ')}`);
 
-		if (entries.length === 0) {
-			logger.error('[DATABASE_ZIP] ❌ No entries found in ZIP');
-			return;
+			if (entries.length === 0) {
+				logger.error('[DATABASE_ZIP] ❌ No entries found in ZIP');
+				return;
+			}
+
+			// Find competition.json entry (OWLCMS sends competition.json, not database.json)
+			const dbEntry = entries.find((e) => 
+				e.entryName === 'competition.json' || e.entryName === 'database.json' || e.entryName.endsWith('.json')
+			);
+			if (!dbEntry) {
+				logger.error(`[DATABASE_ZIP] ❌ No JSON file found in ZIP. Entries: ${entries.map(e => e.entryName).join(', ')}`);
+				return;
+			}
+			
+			logger.info(`[DATABASE_ZIP] Found: ${dbEntry.entryName}`);
+
+			// Extract and parse JSON
+			jsonText = dbEntry.getData().toString('utf8');
+			database = JSON.parse(jsonText);
+		}
+		
+		// Capture in learning mode (full database content, like main branch does)
+		if (LEARNING_MODE) {
+			const { captureMessage } = await import('../utils/learning-mode.js');
+			captureMessage(database, jsonText, '', 'DATABASE_ZIP');
 		}
 
-		// Find database.json entry
-		const dbEntry = entries.find((e) => e.entryName === 'database.json');
-		if (!dbEntry) {
-			logger.error('[DATABASE_ZIP] ❌ No database.json found in ZIP');
-			return;
-		}
+		logger.info(`[DATABASE_ZIP] ✅ Extracted database (${jsonText.length} bytes uncompressed)`);
+		logger.info(`[DATABASE_ZIP] Processing database with ${database.athletes?.length || 0} athletes`);
 
-		// Extract and parse JSON
-		const jsonText = dbEntry.getData().toString('utf8');
-		const database = JSON.parse(jsonText);
-
-		// Store in hub
-		hub.setDatabaseState(database);
+		// Process through hub's handleFullCompetitionData (same as main branch)
+		// This emits database:ready and hub:ready events properly
+		const result = hub.handleFullCompetitionData(database);
 
 		const elapsed = Date.now() - startTime;
-		logger.log(`[DATABASE_ZIP] ✅ Loaded database in ${elapsed}ms`);
+		const ratio = isZip ? ((1 - zipBuffer.length / jsonText.length) * 100).toFixed(1) : 0;
+		logger.info(`[DATABASE_ZIP] ✅ Complete (${zipBuffer.length} → ${jsonText.length} bytes, ${ratio}% compression, ${elapsed}ms)`);
+		
+		if (!result.accepted) {
+			logger.warn(`[DATABASE_ZIP] ⚠️  Database processing result: ${result.reason}`);
+		}
+
+		return result;
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[DATABASE_ZIP] ❌ ERROR after ${elapsed}ms:`, error.message);
+		logger.error('[DATABASE_ZIP] Stack trace:', error.stack);
 	}
 }
 

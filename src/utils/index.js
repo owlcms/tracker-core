@@ -16,7 +16,7 @@ export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml } from './flag-resolve
 export { buildCacheKey } from './cache-utils.js';
 
 // Timer and decision helpers
-export { extractTimers, extractDecisionState, extractTimerAndDecisionState } from './timer-decision-helpers.js';
+export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAndDecisionState } from './timer-decision-helpers.js';
 
 // Attempt bar visibility
 export { computeAttemptBarVisibility, hasCurrentAthlete } from './attempt-bar-visibility.js';

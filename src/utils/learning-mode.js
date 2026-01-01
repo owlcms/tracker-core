@@ -89,3 +89,35 @@ export function captureMessage(payload, rawMessage, reason = '', explicitType = 
   const parsed = payload?.payload ?? payload;
   saveSample(derivedType, parsed, rawMessage);
 }
+
+/**
+ * Capture a binary message (ZIP payload) to the samples directory
+ * @param {string} messageType - The binary message type (e.g., 'database_zip', 'flags_zip')
+ * @param {Buffer} buffer - The raw binary buffer
+ * @param {Object} extractedData - Optional extracted/parsed data from the binary
+ */
+export function captureBinaryMessage(messageType, buffer, extractedData = null) {
+  if (!LEARNING_MODE) return;
+
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `${timestamp}-${messageType.toUpperCase()}.json`;
+    const filePath = path.join(SAMPLES_DIR, filename);
+
+    // Create metadata about the binary message
+    const sample = {
+      meta: {
+        timestamp: new Date().toISOString(),
+        type: messageType,
+        binarySize: buffer.length,
+        isZip: buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B
+      },
+      extractedData: extractedData
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(sample, null, 2));
+    logger.info(`[Learning Mode] Saved binary sample: ${filename}`);
+  } catch (err) {
+    logger.error(`[Learning Mode] Failed to save binary sample:`, err);
+  }
+}

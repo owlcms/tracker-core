@@ -2017,6 +2017,69 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
+   * Set translations ready flag (alias for markTranslationsComplete for binary-handler compatibility)
+   * @param {boolean} ready - Whether translations are ready
+   */
+  setTranslationsReady(ready) {
+    if (ready) {
+      this.markTranslationsComplete(Object.keys(this.translations).length);
+    } else {
+      this.translationsReady = false;
+    }
+  }
+
+  /**
+   * Get last translations checksum (for binary-handler caching)
+   * @returns {string|null}
+   */
+  getLastTranslationsChecksum() {
+    return this.lastTranslationsChecksum;
+  }
+
+  /**
+   * Set last translations checksum (for binary-handler caching)
+   * @param {string} checksum - Translations checksum
+   */
+  setLastTranslationsChecksum(checksum) {
+    this.lastTranslationsChecksum = checksum;
+  }
+
+  /**
+   * Set flags ready state (for binary-handler compatibility)
+   * @param {boolean} ready - Whether flags are ready
+   */
+  setFlagsReady(ready) {
+    this.flagsReady = ready;
+    if (ready) {
+      logger.info('[Hub] ✅ Flags loaded and ready');
+    }
+  }
+
+  /**
+   * Set logos ready state (for binary-handler compatibility)
+   * @param {boolean} ready - Whether logos are ready
+   */
+  setLogosReady(ready) {
+    this.logosReady = ready;
+    if (ready) {
+      logger.info('[Hub] ✅ Logos loaded and ready');
+    }
+  }
+
+  /**
+   * Set database state (for binary-handler compatibility)
+   * @param {object} database - Database state object
+   */
+  setDatabaseState(database) {
+    this.databaseState = {
+      ...database,
+      lastUpdate: Date.now(),
+      initialized: true
+    };
+    this._reindexDatabaseAthletes();
+  }
+
+  /**
    * Get cached translations for a specific locale
    * Implements fallback chain:
    * 1. Exact match (e.g., 'fr-CA')

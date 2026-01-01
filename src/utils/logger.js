@@ -34,27 +34,33 @@ export function getLogger() {
   return currentLogger;
 }
 
+function getTimestamp() {
+  const now = new Date();
+  return now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+}
+
 export const logger = {
-  error: (...args) => currentLogger.error(...args),
-  warn: (...args) => currentLogger.warn(...args),
-  info: (...args) => currentLogger.info(...args),
-  debug: (...args) => currentLogger.debug(...args),
-  trace: (...args) => currentLogger.trace(...args),
+  error: (...args) => currentLogger.error(`[${getTimestamp()}]`, ...args),
+  warn: (...args) => currentLogger.warn(`[${getTimestamp()}]`, ...args),
+  info: (...args) => currentLogger.info(`[${getTimestamp()}]`, ...args),
+  debug: (...args) => currentLogger.debug(`[${getTimestamp()}]`, ...args),
+  trace: (...args) => currentLogger.trace(`[${getTimestamp()}]`, ...args),
   log: (level, ...args) => {
     const lvl = (level || '').toString().toLowerCase();
+    const ts = `[${getTimestamp()}]`;
     switch (lvl) {
       case 'error':
-        return currentLogger.error(...args);
+        return currentLogger.error(ts, ...args);
       case 'warn':
       case 'warning':
-        return currentLogger.warn(...args);
+        return currentLogger.warn(ts, ...args);
       case 'debug':
-        return currentLogger.debug(...args);
+        return currentLogger.debug(ts, ...args);
       case 'trace':
-        return currentLogger.trace(...args);
+        return currentLogger.trace(ts, ...args);
       case 'info':
       default:
-        return currentLogger.info(...args);
+        return currentLogger.info(ts, ...args);
     }
   }
 };
