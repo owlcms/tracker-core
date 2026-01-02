@@ -243,6 +243,8 @@ export async function handleBinaryMessage(buffer, hub) {
 			await handleTranslationsZipMessage(payload, hub);
 		} else if (messageType === 'logos_zip') {
 			await handleLogosMessage(payload, hub);
+		} else if (messageType === 'styles_zip' || messageType === 'styles') {
+			await handleStylesMessage(payload, hub);
 		}
 
 		const elapsed = Date.now() - startTime;
@@ -440,6 +442,71 @@ async function handleLogosMessage(zipBuffer, hub) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[LOGOS] ❌ ERROR after ${elapsed}ms:`, error.message);
 		hub.setLogosReady(false);
+	}
+}
+
+/**
+ * Extract styles ZIP archive to <localFilesDir>/styles
+ * @param {Buffer} zipBuffer - ZIP file buffer containing CSS and style assets
+ */
+async function handleStylesMessage(zipBuffer, hub) {
+	const startTime = Date.now();
+	let extractedCount = 0;
+
+	try {
+		const zip = new AdmZip(zipBuffer);
+		const stylesDir = resolveLocalDir('styles', hub);
+
+		// Ensure target directory exists
+		if (!fs.existsSync(stylesDir)) {
+			fs.mkdirSync(stylesDir, { recursive: true });
+		}
+
+		// Extract all files from ZIP
+		const styleFileNames = [];
+		zip.getEntries().forEach((entry) => {
+			if (!entry.isDirectory) {
+				const targetPath = path.join(stylesDir, entry.entryName);
+				const parentDir = path.dirname(targetPath);
+
+				// Create parent directory if needed
+				if (!fs.existsSync(parentDir)) {
+					fs.mkdirSync(parentDir, { recursive: true });
+				}
+
+				fs.writeFileSync(targetPath, entry.getData());
+				extractedCount++;
+
+				// Track first 10 style file names
+				if (styleFileNames.length < 10) {
+					styleFileNames.push(entry.entryName);
+				}
+			}
+		});
+
+		const elapsed = Date.now() - startTime;
+		logger.log(`[STYLES] ✅ Extracted ${extractedCount} style files in ${elapsed}ms`);
+		if (process.env.SANITY_DEBUG === 'true') {
+			if (styleFileNames.length > 0) {
+				logger.log('[Sanity] First 10 styles from this extraction:');
+				styleFileNames.forEach((name, index) => {
+					logger.log(`  ${index + 1}. ${name}`);
+				});
+			}
+		}
+
+		// Update hub state
+		hub.setStylesReady(true);
+
+		// Emit event for interested listeners
+		hub.emit('styles_loaded', {
+			count: extractedCount,
+			timestamp: Date.now()
+		});
+	} catch (error) {
+		const elapsed = Date.now() - startTime;
+		logger.error(`[STYLES] ❌ ERROR after ${elapsed}ms:`, error.message);
+		hub.setStylesReady(false);
 	}
 }
 

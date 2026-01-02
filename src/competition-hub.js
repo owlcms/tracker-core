@@ -48,8 +48,12 @@ export class CompetitionHub extends EventEmitter {
     this._hasConfirmedFops = false;
     this.flagsLoaded = false;
     this.logosLoaded = false;
+    this.picturesLoaded = false;
+    this.stylesLoaded = false;
     this.flagsReady = false;
     this.logosReady = false;
+    this.picturesReady = false;
+    this.stylesReady = false;
     // Always start with translationsReady = false so tracker requests fresh translations on startup
     this.translationsReady = false;
     this.databaseAthleteIndex = new Map();
@@ -2092,6 +2096,30 @@ export class CompetitionHub extends EventEmitter {
     this.logosLoaded = ready;
     if (ready) {
       logger.info('[Hub] ✅ Logos loaded and ready');
+    }
+  }
+
+  /**
+   * Set pictures ready state (for binary-handler compatibility)
+   * @param {boolean} ready - Whether pictures are ready
+   */
+  setPicturesReady(ready) {
+    this.picturesReady = ready;
+    this.picturesLoaded = ready;
+    if (ready) {
+      logger.info('[Hub] ✅ Pictures loaded and ready');
+    }
+  }
+
+  /**
+   * Set styles ready state (for binary-handler compatibility)
+   * @param {boolean} ready - Whether styles are ready
+   */
+  setStylesReady(ready) {
+    this.stylesReady = ready;
+    this.stylesLoaded = ready;
+    if (ready) {
+      logger.info('[Hub] ✅ Styles loaded and ready');
     }
   }
 
