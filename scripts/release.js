@@ -36,18 +36,18 @@ try {
   // 2. Git Commit
   console.log('💾 Committing change...');
   execSync('git add package.json', { cwd: rootDir, stdio: 'inherit' });
-  execSync(`git commit -m "chore: release v${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
+  execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
 
   // 3. Git Tag
-  console.log(`🏷️  Creating tag v${newVersion}...`);
-  execSync(`git tag v${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  console.log(`🏷️  Creating tag ${newVersion}...`);
+  execSync(`git tag ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
 
   // 4. Git Push
   console.log('🚀 Pushing to remote...');
   execSync('git push', { cwd: rootDir, stdio: 'inherit' });
-  execSync(`git push origin v${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  execSync(`git push origin ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
 
-  console.log(`\n✅ Successfully released v${newVersion}`);
+  console.log(`\n✅ Successfully released ${newVersion}`);
   console.log(`   Previous: ${oldVersion}`);
   console.log(`   Current:  ${newVersion}`);
 
