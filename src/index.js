@@ -17,6 +17,9 @@ export const competitionHub = globalThis.__competitionHub;
 // Logger facade: defaults to console, pluggable via setLogger
 export { logger, setLogger, getLogger } from './utils/logger.js';
 
+// Export binary message handler for WebSocket integration
+export { handleBinaryMessage } from './websocket/binary-handler.js';
+
 // Export event types enum
 export const EVENT_TYPES = {
   DATABASE: 'database',

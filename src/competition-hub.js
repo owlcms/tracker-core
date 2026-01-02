@@ -48,6 +48,8 @@ export class CompetitionHub extends EventEmitter {
     this._hasConfirmedFops = false;
     this.flagsLoaded = false;
     this.logosLoaded = false;
+    this.flagsReady = false;
+    this.logosReady = false;
     // Always start with translationsReady = false so tracker requests fresh translations on startup
     this.translationsReady = false;
     this.databaseAthleteIndex = new Map();
@@ -2075,6 +2077,7 @@ export class CompetitionHub extends EventEmitter {
    */
   setFlagsReady(ready) {
     this.flagsReady = ready;
+    this.flagsLoaded = ready;
     if (ready) {
       logger.info('[Hub] ✅ Flags loaded and ready');
     }
@@ -2086,6 +2089,7 @@ export class CompetitionHub extends EventEmitter {
    */
   setLogosReady(ready) {
     this.logosReady = ready;
+    this.logosLoaded = ready;
     if (ready) {
       logger.info('[Hub] ✅ Logos loaded and ready');
     }
@@ -2158,6 +2162,7 @@ export class CompetitionHub extends EventEmitter {
   markFlagsLoaded() {
     if (!this.flagsLoaded) {
       this.flagsLoaded = true;
+      this.flagsReady = true;
       logger.log('[Hub] ✅ Flags ZIP processed and cached');
     }
   }
@@ -2168,6 +2173,7 @@ export class CompetitionHub extends EventEmitter {
   markLogosLoaded() {
     if (!this.logosLoaded) {
       this.logosLoaded = true;
+      this.logosReady = true;
       logger.log('[Hub] ✅ Logos ZIP processed and cached');
     }
   }
@@ -2225,6 +2231,9 @@ export class CompetitionHub extends EventEmitter {
     this.lastDatabaseChecksum = null;
     this.lastDatabaseLoad = 0;
     this.flagsLoaded = false;
+    this.flagsReady = false;
+    this.logosLoaded = false;
+    this.logosReady = false;
     // Clear translations completely so a reconnect forces a fresh translations_zip
     this.translations = {};
     this.lastTranslationsChecksum = null;
