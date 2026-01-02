@@ -1,6 +1,8 @@
 /**
- * Flag Resolver - Team flag and logo URL utilities
- * Handles multiple flag formats and missing files gracefully
+ * Asset Resolver - Team flags, logos, and athlete pictures URL utilities
+ * Handles multiple asset formats and missing files gracefully
+ * 
+ * All functions use object parameter signatures for consistency
  */
 
 import fs from 'fs';
@@ -17,8 +19,10 @@ function getAssetConfig() {
   return {
     flagsDir: path.join(baseDir, 'flags'),
     logosDir: path.join(baseDir, 'logos'),
+    picturesDir: path.join(baseDir, 'pictures'),
     flagsPrefix: `${normalizedPrefix}/flags`,
-    logosPrefix: `${normalizedPrefix}/logos`
+    logosPrefix: `${normalizedPrefix}/logos`,
+    picturesPrefix: `${normalizedPrefix}/pictures`
   };
 }
 
@@ -79,6 +83,18 @@ export function getLogoHtml({ teamName, width = 64, height = 64, className = 'lo
   const url = getLogoUrl({ teamName });
   if (!url) return '';
   return `<img src="${url}" width="${width}" height="${height}" alt="${teamName}" class="${className}" />`;
+}
+
+export function getPictureUrl({ athleteId } = {}) {
+  const { picturesDir, picturesPrefix } = getAssetConfig();
+  const relativePath = resolveFilePath(athleteId, picturesDir, picturesPrefix.replace(/^\//, ''));
+  return relativePath ? (relativePath.startsWith('/') ? relativePath : `/${relativePath}`) : null;
+}
+
+export function getPictureHtml({ athleteId, athleteName = '', width = 120, height = 150, className = 'picture' } = {}) {
+  const url = getPictureUrl({ athleteId });
+  if (!url) return '';
+  return `<img src="${url}" width="${width}" height="${height}" alt="${athleteName}" class="${className}" />`;
 }
 
 // Backward compatibility aliases (if needed by internal calls)

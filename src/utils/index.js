@@ -9,11 +9,11 @@
  * - Records extraction
  */
 
-// Flag resolver utilities
-export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml, getFlagPath } from './flag-resolver.js';
+// Asset resolver utilities (flags, logos, pictures)
+export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml, getFlagPath, getPictureUrl, getPictureHtml } from './asset-resolver.js';
 
 // Backward compatibility alias
-export { getFlagPath as resolveFlagPath } from './flag-resolver.js';
+export { getFlagPath as resolveFlagPath } from './asset-resolver.js';
 
 // Cache utilities
 export { buildCacheKey } from './cache-utils.js';
