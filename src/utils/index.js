@@ -10,7 +10,10 @@
  */
 
 // Flag resolver utilities
-export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml } from './flag-resolver.js';
+export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml, getFlagPath } from './flag-resolver.js';
+
+// Backward compatibility alias
+export { getFlagPath as resolveFlagPath } from './flag-resolver.js';
 
 // Cache utilities
 export { buildCacheKey } from './cache-utils.js';
