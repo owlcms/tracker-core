@@ -49,11 +49,9 @@ export class CompetitionHub extends EventEmitter {
     this.flagsLoaded = false;
     this.logosLoaded = false;
     this.picturesLoaded = false;
-    this.stylesLoaded = false;
     this.flagsReady = false;
     this.logosReady = false;
     this.picturesReady = false;
-    this.stylesReady = false;
     // Always start with translationsReady = false so tracker requests fresh translations on startup
     this.translationsReady = false;
     this.databaseAthleteIndex = new Map();
@@ -748,10 +746,8 @@ export class CompetitionHub extends EventEmitter {
         case 'pictures_zip':
           if (!this.picturesLoaded) missing.push('pictures_zip');
           break;
-        case 'styles':
-          if (!this.stylesLoaded) missing.push('styles');
-          break;
         // database and translations_zip are handled by getMissingPreconditions()
+        // styles is NOT sent by OWLCMS
       }
     }
     
@@ -2108,18 +2104,6 @@ export class CompetitionHub extends EventEmitter {
     this.picturesLoaded = ready;
     if (ready) {
       logger.info('[Hub] ✅ Pictures loaded and ready');
-    }
-  }
-
-  /**
-   * Set styles ready state (for binary-handler compatibility)
-   * @param {boolean} ready - Whether styles are ready
-   */
-  setStylesReady(ready) {
-    this.stylesReady = ready;
-    this.stylesLoaded = ready;
-    if (ready) {
-      logger.info('[Hub] ✅ Styles loaded and ready');
     }
   }
 
