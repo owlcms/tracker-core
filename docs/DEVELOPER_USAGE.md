@@ -119,6 +119,8 @@ npm link @owlcms/tracker-core
 npm run dev
 ```
 
+> **Note:** If you run `npm install` (or `npm ci`) in the tracker folder later, npm may replace the symlink with the locked GitHub dependency. If that happens, just run `npm link @owlcms/tracker-core` again to restore your local development link.
+
 **What happens:**
 - Tracker SvelteKit app runs on port 8096
 - `npm link` creates a symlink: `tracker/node_modules/@owlcms/tracker-core` → `../tracker-core/src`
@@ -260,103 +262,7 @@ See [API_REFERENCE.md](./API_REFERENCE.md) for complete API documentation includ
 - **Data Structures** (Database State, FOP Updates, Session Athletes)
 - **Utility Modules** (17 modules)
 
----
 
-## Repository Architecture
-
-### Understanding the Structure
-
-The Tracker Core and Tracker system uses **separate repositories** for clean separation of concerns:
-
-#### Repository: `tracker-core`
-
-**Purpose:** Core data hub package for external developers
-
-**Contents:**
-- Hub API (`competition-hub.js`)
-- WebSocket server (`websocket-server.js`)
-- Utility modules (scoring, translations, embedded database)
-- API documentation (`docs/npm/`)
-- Package build configuration
-
-**Published as:** `@owlcms/tracker-core` (public package on GitHub Packages)
-
-**Target users:**
-- External developers building custom applications
-- Developers who only need hub functionality
-- Production applications that don't need tracker
-
----
-
-#### Repository: `owlcms-tracker`
-
-**Purpose:** Competition scoreboard application with plugin system
-
-**Contents:**
-- SvelteKit app with routes and UI
-- Plugin system (`src/plugins/`)
-- Scoreboard templates
-- Tracker-specific documentation
-- Dependency: `@owlcms/tracker-core`
-
-**Target users:**
-- Plugin developers creating custom scoreboards
-- Competition organizers deploying tracker
-- Users who want pre-built scoreboard application
-
----
-
-### Why Separate Repos?
-
-**Benefits:**
-
-1. **Clean separation** - Hub has no tracker-specific code
-2. **Independent versioning** - Hub can be updated without tracker changes
-3. **Smaller downloads** - External devs only get hub (~500KB)
-4. **Clear boundaries** - Plugin devs don't accidentally modify hub
-5. **Easier onboarding** - New developers understand scope immediately
-
-**Workflow for Core Developers:**
-
-Use the linked development setup from **Scenario 3** to work on both simultaneously:
-
-```bash
-# Clone both repos
-git clone https://github.com/owlcms/tracker-core.git
-git clone https://github.com/owlcms/owlcms-tracker.git
-
-# Link them
-cd tracker-core && npm install && npm link
-cd ../owlcms-tracker && npm install && npm link @owlcms/tracker-core
-
-# Develop in parallel
-# Run the tracker; it will load tracker-core from your linked checkout
-# Terminal: cd owlcms-tracker && npm run dev
-```
-
-Changes to hub are immediately reflected in tracker during development.
-
----
-
-### Publishing Workflow
-
-**Hub Package:**
-1. Make changes in `tracker-core` repo
-2. Update version in `package.json`
-3. Create GitHub release
-4. GitHub Actions publishes the public package (see Scenario 5)
-5. External developers get update with `npm update @owlcms/tracker-core`
-
-**Tracker App:**
-1. Make changes in `owlcms-tracker` repo
-2. Update `package.json` dependency: `"@owlcms/tracker-core": "^1.2.0"`
-3. Deploy tracker with updated hub dependency
-
-**Atomic updates across both:**
-1. Branch in `tracker-core`, commit changes
-2. Branch in `owlcms-tracker`, update dependency, test
-3. Merge both PRs together
-4. Publish hub, then deploy tracker
 
 ---
 
@@ -393,26 +299,6 @@ console.log('FOPs:', competitionHub.getAvailableFOPs());
 
 ## Troubleshooting
 
-### Registry Configuration
-
-If you install directly from GitHub (Scenarios 1, 2) or use `npm link` (Scenario 3), you do **not** need any registry configuration.
-
-Only if you are installing a published version from GitHub Packages (not recommended) do you need:
-
-```bash
-echo "@owlcms:registry=https://npm.pkg.github.com" >> ~/.npmrc
-```
-
-### Import Errors
-
-Make sure your `package.json` has `"type": "module"` for ES6 imports:
-
-```json
-{
-  "type": "module"
-}
-```
-
 ### OWLCMS Not Connecting
 
 1. Check OWLCMS configuration: **Prepare Competition → Connections → URL for Video Data**
@@ -433,12 +319,3 @@ competitionHub.on(EVENT_TYPES.UPDATE, ({ fopName, payload }) => {
 
 ```
 
----
-
-## Next Steps
-
-- **Complete API Documentation:** [API_REFERENCE.md](./API_REFERENCE.md) - All hub methods, events, data structures
-- **Implementation Details:** [IMPLEMENTATION_PLAN.md](./migration/IMPLEMENTATION_PLAN.md) - For contributors modifying hub internals
-- **Core Repo Extraction:** [CORE_MIGRATION.md](./migration/CORE_MIGRATION.md) - What changes to make in the new `tracker-core` repository
-- **Tracker Update Guide:** [TRACKER_MIGRATION.md](./migration/TRACKER_MIGRATION.md) - What to change in `owlcms-tracker` to consume the package
-- **Build Custom Scoreboards:** See [CREATE_YOUR_OWN.md](../../owlcms-tracker/CREATE_YOUR_OWN.md) in the tracker repo for plugin development guide

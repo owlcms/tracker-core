@@ -154,6 +154,16 @@ cd ../owlcms-tracker
 npm run dev
 ```
 
+### Important: npm install resets links
+
+If you run `npm install` (or `npm ci`) in the consumer project (owlcms-tracker), npm may replace your symlink with the actual package from GitHub (as specified in package-lock.json).
+
+**To restore the link:**
+```bash
+cd ../owlcms-tracker
+npm link @owlcms/tracker-core
+```
+
 ### Checking Link Status
 
 ```bash
