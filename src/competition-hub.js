@@ -64,6 +64,9 @@ export class CompetitionHub extends EventEmitter {
     // Per-FOP version counters for cache invalidation
     this._fopVersions = {};
     
+    // Injected callback for requesting resources from OWLCMS (set by websocket-server)
+    this._requestResourcesCallback = null;
+    
     // Debounce state for broadcasts - per FOP and event type
     this.lastBroadcastTime = {};  // Structure: { 'fopName-eventType': timestamp }
     this.broadcastDebounceMs = 100; // Minimum time between identical broadcasts
@@ -116,6 +119,15 @@ export class CompetitionHub extends EventEmitter {
    */
   getLocalUrlPrefix() {
     return this._localUrlPrefix || '/local';
+  }
+
+  /**
+   * Set callback for requesting resources from OWLCMS
+   * Called by websocket-server during initialization to inject requestResources
+   * @param {Function} callback - Function that sends resource request to OWLCMS
+   */
+  setRequestResourcesCallback(callback) {
+    this._requestResourcesCallback = callback;
   }
 
   /**
@@ -764,12 +776,11 @@ export class CompetitionHub extends EventEmitter {
     
     logger.log(`[Hub] 📦 Plugin requesting resources: ${missing.join(', ')}`);
     
-    // Dynamic import to avoid circular dependency
-    import('./websocket-server.js').then(({ requestResources }) => {
-      requestResources(missing);
-    }).catch(err => {
-      logger.error('[Hub] Failed to request resources:', err.message);
-    });
+    if (this._requestResourcesCallback) {
+      this._requestResourcesCallback(missing);
+    } else {
+      logger.error('[Hub] Cannot request resources - callback not set');
+    }
   }
   
   /**

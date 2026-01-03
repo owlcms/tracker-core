@@ -194,6 +194,11 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 	
 	wss = new WebSocketServer({ noServer: true });
 	
+	// Inject requestResources callback into hub so it can request resources without circular import
+	if (hubInstance && typeof hubInstance.setRequestResourcesCallback === 'function') {
+		hubInstance.setRequestResourcesCallback(requestResources);
+	}
+	
 		// Track if this is the first connection since server start
 		let firstConnectionHandled = false;
 

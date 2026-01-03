@@ -16,7 +16,6 @@
 import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { isVersionAcceptable, parseVersion } from '../protocol/protocol-config.js';
 import { logger } from '../utils/logger.js';
@@ -499,7 +498,6 @@ async function handleDatabaseZipMessage(zipBuffer, hub) {
 		
 		// Capture in learning mode (full database content, like main branch does)
 		if (LEARNING_MODE) {
-			const { captureMessage } = await import('../utils/learning-mode.js');
 			captureMessage(database, jsonText, '', 'DATABASE_ZIP');
 		}
 
