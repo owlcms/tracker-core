@@ -8,9 +8,9 @@ You are helping build **tracker-core**, a shared NPM package for Olympic weightl
 **READ THESE FIRST** when working on this project:
 
 1. **[README.md](../README.md)** - Package overview & API reference
-2. **[docs/npm/CORE_MIGRATION.md](../docs/npm/CORE_MIGRATION.md)** - Migration guide from owlcms-tracker
-3. **[docs/npm/DEVELOPER_USAGE.md](../docs/npm/DEVELOPER_USAGE.md)** - How to use this package
-4. **[docs/npm/API_REFERENCE.md](../docs/npm/API_REFERENCE.md)** - Complete API documentation
+2. **[docs/migration/CORE_MIGRATION.md](../docs/migration/CORE_MIGRATION.md)** - Migration guide from owlcms-tracker
+3. **[docs/DEVELOPER_USAGE.md](../docs/DEVELOPER_USAGE.md)** - How to use this package
+4. **[docs/API_REFERENCE.md](../docs/API_REFERENCE.md)** - Complete API documentation
 
 **⚠️ IMPORTANT:** This is a shared library package. Changes here affect multiple consumers (owlcms-tracker, custom implementations, etc.)
 
