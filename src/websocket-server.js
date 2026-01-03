@@ -18,6 +18,27 @@ let activeConnection = null; // Track active WebSocket connection for sending me
 let hubInstance = null; // Injected hub instance from attach/inject mode
 
 /**
+ * Close the active OWLCMS connection to force a full reconnect
+ * OWLCMS will automatically reconnect and resend all data (database, flags, translations, etc.)
+ * @returns {boolean} true if connection was closed, false if no active connection
+ */
+export function closeConnection() {
+	if (!activeConnection) {
+		logger.warn('[WebSocket] No active connection to close');
+		return false;
+	}
+	
+	logger.info('[WebSocket] 🔌 Closing OWLCMS connection to force full reconnect...');
+	try {
+		activeConnection.close(1000, 'Refresh requested');
+		return true;
+	} catch (err) {
+		logger.error('[WebSocket] Error closing connection:', err.message);
+		return false;
+	}
+}
+
+/**
  * Request resources from OWLCMS
  * Called by plugins when they need resources that aren't loaded yet
  * @param {string[]} resources - Array of resource types to request (e.g., ['flags_zip', 'logos_zip'])
