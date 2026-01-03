@@ -222,10 +222,8 @@ export async function handleBinaryMessage(buffer, hub) {
 		// Route to handler based on message type
 		logger.info(`[BINARY] Processing message type: ${messageType} (payload: ${payload.length} bytes)`);
 		
-		// Capture binary message in learning mode
-		if (LEARNING_MODE) {
-			captureBinaryMessage(messageType, payload, { payloadSize: payload.length });
-		}
+		// Note: Learning mode capture is done inside each handler AFTER content is extracted
+		// to capture the actual parsed data, not just the raw binary
 		
 		if (messageType === 'database_zip' || messageType === 'database') {
 			await handleDatabaseZipMessage(payload, hub);
