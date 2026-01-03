@@ -20,6 +20,9 @@ export { logger, setLogger, getLogger } from './utils/logger.js';
 // Export binary message handler for WebSocket integration
 export { handleBinaryMessage } from './websocket/binary-handler.js';
 
+// Export WebSocket control functions
+export { closeConnection, requestResources } from './websocket-server.js';
+
 // Export event types enum
 export const EVENT_TYPES = {
   DATABASE: 'database',
