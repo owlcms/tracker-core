@@ -26,6 +26,7 @@ You are helping build **tracker-core**, a shared NPM package for Olympic weightl
 **Operating System:** Windows with bash shell (Git Bash or WSL)
 - When generating terminal commands, use bash syntax
 - File paths use Windows format (`c:\Dev\...`) but commands are bash-style
+- **Use `grep`, not `rg`** - `ripgrep` is not available, use standard `grep` for searching
 - **CRITICAL:** Git Bash has limitations with heredocs - see section below
 
 ------
