@@ -35,7 +35,7 @@ try {
 
   // 2. Git Commit
   console.log('💾 Committing change...');
-  execSync('git add package.json', { cwd: rootDir, stdio: 'inherit' });
+  execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
   execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
 
   // 3. Git Tag
