@@ -66,6 +66,9 @@ export function parseV2Database(params) {
   // Parse technical officials (new in V2 - referees, jury, etc.)
   const technicalOfficials = db.technicalOfficials || [];
   
+  // Parse timetable entries (IWF team assignments by session and role)
+  const technicalOfficialsTimetable = db.technicalOfficialsTimetable || [];
+  
   // Build normalized result
   const result = {
     formatVersion: '2.0',
@@ -77,6 +80,7 @@ export function parseV2Database(params) {
     sessions,
     records,
     technicalOfficials,
+    technicalOfficialsTimetable,
     platforms: db.platforms || [],
     teams: db.teams || [],
     competition: {
@@ -98,7 +102,7 @@ export function parseV2Database(params) {
     databaseChecksum: providedChecksum || db.databaseChecksum || null
   };
   
-    logger.info(`[V2 Parser] ✅ Parsed ${athletes.length} athletes, ${categories.length} categories, ${fops.length} FOPs, ${records.length} records, ${technicalOfficials.length} officials`);
+    logger.info(`[V2 Parser] ✅ Parsed ${athletes.length} athletes, ${categories.length} categories, ${fops.length} FOPs, ${records.length} records, ${technicalOfficials.length} officials, ${technicalOfficialsTimetable.length} timetable entries`);
   
   return result;
 }

@@ -861,6 +861,63 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
+   * Get all timetable entries mapping sessions to official roles and teams.
+   * @returns {Array} List of timetable entries with { sessionName, roleCategory, teamNumber }
+   */
+  getTimetable() {
+    return this.databaseState?.technicalOfficialsTimetable || [];
+  }
+
+  /**
+   * Get all technical officials (referees, jury, marshals, etc.) from the database payload.
+   * @returns {Array} List of officials as provided by OWLCMS
+   */
+  getTechnicalOfficials() {
+    return this.databaseState?.technicalOfficials || [];
+  }
+
+  /**
+   * Get timetable entries for a specific session.
+   * @param {string} sessionName - Name of the session/group
+   * @returns {Array} Timetable entries for this session
+   */
+  getTimetableForSession({ sessionName } = {}) {
+    if (!sessionName) {
+      return [];
+    }
+    const allEntries = this.getTimetable();
+    return allEntries.filter(entry => entry.sessionName === sessionName);
+  }
+
+  /**
+   * Get team assignment for a specific session and role.
+   * @param {string} sessionName - Name of the session/group
+   * @param {string} roleCategory - Official role (REFEREE, JURY_MEMBER, etc.)
+   * @returns {number|null} Team number assigned to this role in this session
+   */
+  getTeamForSessionRole({ sessionName, roleCategory } = {}) {
+    if (!sessionName || !roleCategory) {
+      return null;
+    }
+    const entries = this.getTimetableForSession({ sessionName });
+    const entry = entries.find(e => e.roleCategory === roleCategory);
+    return entry ? entry.teamNumber : null;
+  }
+
+  /**
+   * Get all officials assigned to a specific team (across all sessions).
+   * @param {number} teamNumber - Team number to look up
+   * @returns {Array} List of { sessionName, roleCategory, teamNumber }
+   */
+  getTeamOfficials({ teamNumber } = {}) {
+    if (teamNumber === null || teamNumber === undefined) {
+      return [];
+    }
+    const allEntries = this.getTimetable();
+    return allEntries.filter(entry => entry.teamNumber === teamNumber);
+  }
+
+  /**
    * Monotonic per-FOP version counter for plugin cache invalidation.
    */
   getFopStateVersion({ fopName = 'A' } = {}) {

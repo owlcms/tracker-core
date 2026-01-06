@@ -53,7 +53,7 @@ export function saveSample(type, data, rawMessage) {
 
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `message-${timestamp}-${type}.json`;
+    const filename = `${timestamp}-${type}.json`;
     const filePath = path.join(SAMPLES_DIR, filename);
     
     // Create a rich sample object with metadata

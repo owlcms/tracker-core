@@ -19,7 +19,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { isVersionAcceptable, parseVersion } from '../protocol/protocol-config.js';
 import { logger } from '../utils/logger.js';
-import { captureBinaryMessage, LEARNING_MODE } from '../utils/learning-mode.js';
+import { captureBinaryMessage, captureMessage, LEARNING_MODE } from '../utils/learning-mode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -309,6 +309,12 @@ async function handleFlagsMessage(zipBuffer, hub) {
 		// Run sanity check after successful extraction (shows cumulative count)
 		verifySanityAfterFlags(hub);
 
+		// Capture binary sample in learning mode
+		captureBinaryMessage('flags_zip', zipBuffer, {
+			extractedCount,
+			flagFileNames
+		});
+
 		// Update hub state
 		hub.setFlagsReady(true);
 
@@ -331,6 +337,7 @@ async function handleFlagsMessage(zipBuffer, hub) {
 async function handlePicturesMessage(zipBuffer, hub) {
 	const startTime = Date.now();
 	let extractedCount = 0;
+	const pictureFileNames = [];
 
 	try {
 		const zip = new AdmZip(zipBuffer);
@@ -354,6 +361,10 @@ async function handlePicturesMessage(zipBuffer, hub) {
 
 				fs.writeFileSync(targetPath, entry.getData());
 				extractedCount++;
+
+				if (pictureFileNames.length < 10) {
+					pictureFileNames.push(entry.entryName);
+				}
 			}
 		});
 
@@ -367,6 +378,12 @@ async function handlePicturesMessage(zipBuffer, hub) {
 		hub.emit('pictures_loaded', {
 			count: extractedCount,
 			timestamp: Date.now()
+		});
+
+		// Capture binary sample in learning mode
+		captureBinaryMessage('pictures_zip', zipBuffer, {
+			extractedCount,
+			pictureFileNames
 		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
@@ -432,6 +449,12 @@ async function handleLogosMessage(zipBuffer, hub) {
 		hub.emit('logos_loaded', {
 			count: extractedCount,
 			timestamp: Date.now()
+		});
+
+		// Capture binary sample in learning mode
+		captureBinaryMessage('logos_zip', zipBuffer, {
+			extractedCount,
+			logoFileNames
 		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
@@ -585,6 +608,14 @@ async function handleTranslationsZipMessage(zipBuffer, hub) {
 
 		// Update hub state
 		hub.setTranslationsReady(true);
+
+		// Capture binary sample in learning mode
+		captureBinaryMessage('translations_zip', zipBuffer, {
+			localeCount,
+			totalKeys,
+			checksum,
+			locales: Object.keys(localesMap)
+		});
 	} catch (error) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[TRANSLATIONS_ZIP] ❌ ERROR after ${elapsed}ms:`, error.message);
