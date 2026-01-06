@@ -10,7 +10,7 @@
  */
 
 // Asset resolver utilities (flags, logos, pictures)
-export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml, getFlagPath, getPictureUrl, getPictureHtml } from './asset-resolver.js';
+export { getFlagUrl, getFlagHtml, getLogoUrl, getLogoHtml, getFlagPath, getPictureUrl, getPictureHtml, getHeaderLogoUrl } from './asset-resolver.js';
 
 // Backward compatibility alias
 export { getFlagPath as resolveFlagPath } from './asset-resolver.js';

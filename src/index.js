@@ -37,3 +37,6 @@ export const EVENT_TYPES = {
   SESSION_DONE: 'session:done',
   SESSION_REOPENED: 'session:reopened'
 };
+
+// Re-export utilities for convenience
+export { getHeaderLogoUrl, getFlagUrl, getLogoUrl, getPictureUrl } from './utils/asset-resolver.js';

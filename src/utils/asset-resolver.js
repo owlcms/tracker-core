@@ -97,6 +97,40 @@ export function getPictureHtml({ athleteId, athleteName = '', width = 120, heigh
   return `<img src="${url}" width="${width}" height="${height}" alt="${athleteName}" class="${className}" />`;
 }
 
+/**
+ * Get header logo URL by base name(s)
+ * Tries each base name in order, scanning for available extensions: .svg, .png, .jpg, .jpeg, .webp
+ * @param {string|string[]} baseNames - Single base name or array of names to try in order (e.g., ['header_left', 'left'])
+ * @returns {string|null} URL path to first found logo or null if none found
+ */
+export function getHeaderLogoUrl({ baseNames } = {}) {
+  if (!baseNames) return null;
+  
+  // Normalize to array
+  const names = Array.isArray(baseNames) ? baseNames : [baseNames];
+  
+  const { logosDir, logosPrefix } = getAssetConfig();
+  const extensions = ['.svg', '.png', '.jpg', '.jpeg', '.webp'];
+  
+  for (const baseName of names) {
+    if (!baseName || typeof baseName !== 'string') continue;
+    
+    for (const ext of extensions) {
+      const fileName = `${baseName}${ext}`;
+      const fullPath = path.join(logosDir, fileName);
+      try {
+        if (fs.existsSync(fullPath)) {
+          return `${logosPrefix}/${fileName}`;
+        }
+      } catch (e) { 
+        continue; 
+      }
+    }
+  }
+  
+  return null;
+}
+
 // Backward compatibility aliases (if needed by internal calls)
 export function getFlagPath({ teamName } = {}) {
   const { flagsDir, flagsPrefix } = getAssetConfig();
