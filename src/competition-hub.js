@@ -767,20 +767,111 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
-   * Request missing plugin preconditions from OWLCMS
+   * Request missing plugin preconditions from OWLCMS and wait for them to load
    * Sends a JSON message over WebSocket to trigger resource download
+   * Returns a Promise that resolves when all requested resources are loaded (or timeout)
    * @param {Array<string>} missing - Array of missing resource types to request
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000)
+   * @returns {Promise<boolean>} true if all resources loaded, false on timeout
    */
-  requestPluginPreconditions(missing = []) {
-    if (missing.length === 0) return;
+  async requestPluginPreconditions(missing = [], timeoutMs = 30000) {
+    if (missing.length === 0) return true;
     
     logger.log(`[Hub] 📦 Plugin requesting resources: ${missing.join(', ')}`);
     
-    if (this._requestResourcesCallback) {
-      this._requestResourcesCallback(missing);
-    } else {
+    if (!this._requestResourcesCallback) {
       logger.error('[Hub] Cannot request resources - callback not set');
+      return false;
     }
+    
+    // Map resource types to their corresponding loaded events
+    // Event names use underscores (flags_loaded, logos_loaded, pictures_loaded)
+    const resourceToEvent = {
+      'flags_zip': 'flags_loaded',
+      'logos_zip': 'logos_loaded',
+      'pictures_zip': 'pictures_loaded'
+    };
+    
+    // Track which events we're waiting for
+    const pendingEvents = missing
+      .map(r => resourceToEvent[r])
+      .filter(e => e); // Only track known resource types
+    
+    if (pendingEvents.length === 0) {
+      // No known resource events to wait for
+      this._requestResourcesCallback(missing);
+      return true;
+    }
+    
+    // Create promise that resolves when all resources are loaded
+    const loadPromise = new Promise((resolve) => {
+      const remaining = new Set(pendingEvents);
+      
+      const checkComplete = (eventName) => {
+        remaining.delete(eventName);
+        logger.debug(`[Hub] Resource loaded: ${eventName}, remaining: ${[...remaining].join(', ') || 'none'}`);
+        if (remaining.size === 0) {
+          resolve(true);
+        }
+      };
+      
+      // Subscribe to each event (once)
+      pendingEvents.forEach(eventName => {
+        this.once(eventName, () => checkComplete(eventName));
+      });
+      
+      // Re-check after setting up listeners (race condition: resource may have loaded while we were setting up)
+      const stillMissing = this.checkPluginPreconditions(missing);
+      if (stillMissing.length === 0) {
+        logger.info('[Hub] Resources loaded while setting up listeners - resolving immediately');
+        resolve(true);
+        return;
+      }
+    });
+    
+    // Send the request
+    this._requestResourcesCallback(missing);
+    
+    // Race between load completion and timeout
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        logger.warn(`[Hub] Timeout waiting for resources after ${timeoutMs}ms`);
+        resolve(false);
+      }, timeoutMs);
+    });
+    
+    return Promise.race([loadPromise, timeoutPromise]);
+  }
+
+  /**
+   * Ensure plugin preconditions are met (blocking)
+   * Checks if resources are loaded, requests them if missing, and waits for them to arrive.
+   * Plugins can simply await this call and proceed - no need for manual event handling.
+   * 
+   * @param {Array<string>} requires - Array of required resource types (e.g., ['logos_zip', 'flags_zip'])
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000)
+   * @returns {Promise<boolean>} true if all resources are available, false on timeout
+   * 
+   * @example
+   * // In a plugin helper:
+   * const ready = await competitionHub.ensurePluginPreconditions(['logos_zip']);
+   * if (!ready) return { status: 'waiting', message: 'Resources timeout' };
+   * // proceed with data processing - logos are guaranteed to be loaded
+   */
+  async ensurePluginPreconditions(requires = [], timeoutMs = 30000) {
+    if (requires.length === 0) return true;
+    
+    // Check what's missing
+    const missing = this.checkPluginPreconditions(requires);
+    
+    if (missing.length === 0) {
+      // All resources already loaded
+      return true;
+    }
+    
+    // Request and wait for missing resources
+    logger.info(`[Hub] Ensuring preconditions: ${requires.join(', ')} (missing: ${missing.join(', ')})`);
+    return this.requestPluginPreconditions(missing, timeoutMs);
   }
   
   /**

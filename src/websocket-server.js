@@ -6,6 +6,8 @@
  * This module provides attach/inject and standalone modes per API_REFERENCE.md
  */
 
+import fs from 'fs/promises';
+import path from 'path';
 import { WebSocketServer } from 'ws';
 import { captureMessage, LEARNING_MODE } from './utils/learning-mode.js';
 import { logger } from './utils/logger.js';
@@ -60,6 +62,28 @@ export function requestResources(resources) {
 		reason: 'plugin_preconditions',
 		missing: resources
 	}));
+}
+
+/**
+ * Remove local asset directories so reconnects cannot reuse stale files.
+ * This runs on every new WebSocket connection.
+ */
+async function purgeLocalAssetDirs(hub) {
+	try {
+		const baseDir = hub?.getLocalFilesDir?.() || path.join(process.cwd(), 'local');
+		const targets = ['flags', 'logos', 'pictures', 'styles'];
+		for (const dir of targets) {
+			const fullPath = path.join(baseDir, dir);
+			try {
+				await fs.rm(fullPath, { recursive: true, force: true });
+				logger.info(`[WebSocket] Purged local asset dir: ${fullPath}`);
+			} catch (err) {
+				logger.warn(`[WebSocket] Failed to purge ${fullPath}: ${err.message}`);
+			}
+		}
+	} catch (outerErr) {
+		logger.warn(`[WebSocket] Failed to purge asset directories: ${outerErr.message}`);
+	}
 }
 
 /**
@@ -204,6 +228,8 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 
 		wss.on('connection', (ws) => {
 			logger.info('[WebSocket] Client connected');
+			// Start purge immediately; message handling will await completion before processing any frames
+			const purgePromise = purgeLocalAssetDirs(hubInstance);
 			if (callbacks.onConnect) {
 				try { callbacks.onConnect(ws); } catch (e) { logger.error('[WebSocket] onConnect error:', e); }
 			}
@@ -240,6 +266,14 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 
 			// Use raw message event which provides both data and a flag for isBinary
 			ws.on('message', async (data, isBinary) => {
+				// Ensure purge completes before handling any incoming frames
+				if (purgePromise) {
+					try {
+						await purgePromise;
+					} catch (purgeErr) {
+						logger.warn(`[WebSocket] Purge failed: ${purgeErr.message}`);
+					}
+				}
 			// Strictly follow OWLCMS spec:
 			// - If isBinary is true, frame is binary with [4-byte length][type][payload]
 			// - If isBinary is false, frame is JSON text
