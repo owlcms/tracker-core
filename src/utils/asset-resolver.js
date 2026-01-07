@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { competitionHub } from '../index.js';
+import { logger } from './logger.js';
 
 const FLAG_EXTENSIONS = ['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
@@ -69,8 +70,15 @@ export function getFlagUrl({ teamName } = {}) {
 
 export function getLogoUrl({ teamName } = {}) {
   const { logosDir, logosPrefix } = getAssetConfig();
+  logger.trace('[asset-resolver] resolving logo url', { teamName, logosDir });
   const relativePath = resolveFilePath(teamName, logosDir, logosPrefix.replace(/^\//, ''));
-  return relativePath ? (relativePath.startsWith('/') ? relativePath : `/${relativePath}`) : null;
+  if (relativePath) {
+    const url = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+    logger.trace('[asset-resolver] logo url resolved', { teamName, url });
+    return url;
+  }
+  logger.trace('[asset-resolver] logo url not found', { teamName });
+  return null;
 }
 
 export function getFlagHtml({ teamName, width = 32, height = 24, className = 'flag' } = {}) {

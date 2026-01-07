@@ -29,6 +29,14 @@ function resolveLocalDir(subdir, hub) {
 	return path.join(base, subdir);
 }
 
+function resetDirectory(dir) {
+ 	if (fs.existsSync(dir)) {
+ 		fs.rmSync(dir, { recursive: true, force: true });
+ 	}
+
+ 	fs.mkdirSync(dir, { recursive: true });
+}
+
 /**
  * Sanity check after flags extraction
  * Verifies flags directory and file count
@@ -265,11 +273,7 @@ async function handleFlagsMessage(zipBuffer, hub) {
 		// Parse ZIP from buffer
 		const zip = new AdmZip(zipBuffer);
 		const flagsDir = resolveLocalDir('flags', hub);
-
-		// Ensure target directory exists
-		if (!fs.existsSync(flagsDir)) {
-			fs.mkdirSync(flagsDir, { recursive: true });
-		}
+		resetDirectory(flagsDir);
 
 		// Extract all files from ZIP
 		const flagFileNames = [];
@@ -342,11 +346,7 @@ async function handlePicturesMessage(zipBuffer, hub) {
 	try {
 		const zip = new AdmZip(zipBuffer);
 		const picturesDir = resolveLocalDir('pictures', hub);
-
-		// Ensure target directory exists
-		if (!fs.existsSync(picturesDir)) {
-			fs.mkdirSync(picturesDir, { recursive: true });
-		}
+		resetDirectory(picturesDir);
 
 		// Extract all files from ZIP
 		zip.getEntries().forEach((entry) => {
@@ -403,11 +403,7 @@ async function handleLogosMessage(zipBuffer, hub) {
 	try {
 		const zip = new AdmZip(zipBuffer);
 		const logosDir = resolveLocalDir('logos', hub);
-
-		// Ensure target directory exists
-		if (!fs.existsSync(logosDir)) {
-			fs.mkdirSync(logosDir, { recursive: true });
-		}
+		resetDirectory(logosDir);
 
 		// Extract all files from ZIP
 		const logoFileNames = [];
