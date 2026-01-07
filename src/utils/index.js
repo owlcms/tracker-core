@@ -26,3 +26,6 @@ export { computeAttemptBarVisibility, hasCurrentAthlete } from './attempt-bar-vi
 
 // Records extraction
 export { extractRecordsFromUpdate } from './records-extractor.js';
+
+// Records display and sorting
+export { formatCategoryDisplay, sortRecordsList } from './records-display.js';
