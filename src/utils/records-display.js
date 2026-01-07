@@ -12,6 +12,9 @@ const liftPriority = {
   TOTAL: 3
 };
 
+// Default federation priority ensures IWF (international) appears first when sorting
+const defaultFederationPriority = ['IWF'];
+
 /**
  * Format category display string
  * Replaces ">" prefix with "+" for superheavyweight categories
@@ -88,4 +91,48 @@ function compareRecords(a, b) {
  */
 export function sortRecordsList(records = []) {
   return [...records].sort(compareRecords);
+}
+
+/**
+ * Sort records by federation first, then by standard record ordering
+ * Order:
+ * 1. Federation (with optional priority list, default: IWF first, then alpha)
+ * 2. Weight class / category / lift / record name (same as sortRecordsList)
+ *
+ * @param {Array} records - Array of record objects
+ * @param {Object} options - Sorting options
+ * @param {Array<string>} options.federationPriority - Federations to prioritize (in order)
+ * @returns {Array} Sorted array of records
+ */
+export function sortRecordsByFederation(records = [], options = {}) {
+  const { federationPriority = defaultFederationPriority } = options;
+  const normalizedPriority = (federationPriority || [])
+    .map(f => (f || '').toUpperCase())
+    .filter(Boolean);
+  const priorityLookup = new Map(normalizedPriority.map((fed, idx) => [fed, idx]));
+
+  const normalizeFederation = (record) => (record.federation || record.recordFederation || '').trim();
+
+  const compare = (a, b) => {
+    const fedA = normalizeFederation(a);
+    const fedB = normalizeFederation(b);
+
+    const upperFedA = fedA.toUpperCase();
+    const upperFedB = fedB.toUpperCase();
+
+    if (upperFedA !== upperFedB) {
+      const priorityA = priorityLookup.has(upperFedA) ? priorityLookup.get(upperFedA) : priorityLookup.size;
+      const priorityB = priorityLookup.has(upperFedB) ? priorityLookup.get(upperFedB) : priorityLookup.size;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return upperFedA.localeCompare(upperFedB);
+    }
+
+    return compareRecords(a, b);
+  };
+
+  return [...records].sort(compare);
 }

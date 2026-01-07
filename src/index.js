@@ -40,4 +40,4 @@ export const EVENT_TYPES = {
 
 // Re-export utilities for convenience
 export { getHeaderLogoUrl, getFlagUrl, getLogoUrl, getPictureUrl } from './utils/asset-resolver.js';
-export { formatCategoryDisplay, sortRecordsList } from './utils/records-display.js';
+export { formatCategoryDisplay, sortRecordsList, sortRecordsByFederation } from './utils/records-display.js';

@@ -662,7 +662,12 @@ export class CompetitionHub extends EventEmitter {
    * This is the minimum required state for scoreboards to function
    */
   isReady() {
-    const hasDatabase = !!(this.databaseState && this.databaseState.athletes && this.databaseState.athletes.length > 0);
+    // Database is ready if we have a valid database structure (competition info or athletes array)
+    // A competition with 0 athletes is still valid and ready
+    const hasDatabase = !!(this.databaseState && (
+      this.databaseState.competition || 
+      Array.isArray(this.databaseState.athletes)
+    ));
     const hasTranslations = this.translationsReady;
     return hasDatabase && hasTranslations;
   }
@@ -804,26 +809,44 @@ export class CompetitionHub extends EventEmitter {
     }
     
     // Create promise that resolves when all resources are loaded
+    // Use 'on' instead of 'once' because multiple concurrent callers may be waiting
+    // for the same event. We clean up listeners after resolution or timeout.
+    const remaining = new Set(pendingEvents);
+    const listeners = new Map(); // eventName -> listener function
+    let resolved = false;
+    
+    const cleanup = () => {
+      for (const [eventName, listener] of listeners) {
+        this.removeListener(eventName, listener);
+      }
+      listeners.clear();
+    };
+    
     const loadPromise = new Promise((resolve) => {
-      const remaining = new Set(pendingEvents);
-      
       const checkComplete = (eventName) => {
+        if (resolved) return;
         remaining.delete(eventName);
         logger.debug(`[Hub] Resource loaded: ${eventName}, remaining: ${[...remaining].join(', ') || 'none'}`);
         if (remaining.size === 0) {
+          resolved = true;
+          cleanup();
           resolve(true);
         }
       };
       
-      // Subscribe to each event (once)
+      // Subscribe to each event
       pendingEvents.forEach(eventName => {
-        this.once(eventName, () => checkComplete(eventName));
+        const listener = () => checkComplete(eventName);
+        listeners.set(eventName, listener);
+        this.on(eventName, listener);
       });
       
       // Re-check after setting up listeners (race condition: resource may have loaded while we were setting up)
       const stillMissing = this.checkPluginPreconditions(missing);
       if (stillMissing.length === 0) {
         logger.info('[Hub] Resources loaded while setting up listeners - resolving immediately');
+        resolved = true;
+        cleanup();
         resolve(true);
         return;
       }
@@ -835,7 +858,11 @@ export class CompetitionHub extends EventEmitter {
     // Race between load completion and timeout
     const timeoutPromise = new Promise((resolve) => {
       setTimeout(() => {
-        logger.warn(`[Hub] Timeout waiting for resources after ${timeoutMs}ms`);
+        if (!resolved) {
+          logger.warn(`[Hub] Timeout waiting for resources after ${timeoutMs}ms`);
+          resolved = true;
+          cleanup();
+        }
         resolve(false);
       }, timeoutMs);
     });
