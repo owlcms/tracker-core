@@ -529,9 +529,8 @@ export class CompetitionHub extends EventEmitter {
       result.liftingOrder = params.liftingOrderAthletes;
     }
 
-    if (params.leaders && typeof params.leaders === 'object') {
-      result.leaders = params.leaders;
-    }
+    // Always set leaders field (either from params or empty array)
+    result.leaders = (params.leaders && typeof params.leaders === 'object') ? params.leaders : [];
 
     // Break/ceremony state
     if (params.break === 'true') {
