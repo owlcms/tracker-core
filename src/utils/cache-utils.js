@@ -47,15 +47,41 @@ export function getHubFopVersion(fopName) {
 }
 
 /**
+ * Normalize a value for canonical cache key representation
+ */
+function canonicalValue(v) {
+    if (v === true || v === 'true') return 'true';
+    if (v === false || v === 'false') return 'false';
+    if (v == null) return 'null';
+    
+    const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() && !isNaN(v) ? Number(v) : null);
+    if (n !== null && Number.isFinite(n)) return String(Object.is(n, -0) ? 0 : n);
+    
+    return typeof v === 'string' ? v.normalize('NFKC') : String(v);
+}
+
+/**
  * Build a cache key. If includeFop is false, the fopName will be omitted
- * and the key will be global to the hub. Options are JSON-stringified in
- * a consistent manner.
+ * and the key will be global to the hub. Options are normalized and sorted
+ * alphabetically by key for stable cache keys.
  */
 export function buildCacheKey({ fopName, includeFop = true, opts = {} } = {}) {
     const version = getHubFopVersion(includeFop ? fopName : null);
-    const optionsPart = Object.keys(opts).length ? JSON.stringify(opts) : '';
+    
+    // Sort options keys alphabetically and normalize values for canonical representation
+    const sortedOpts = Object.keys(opts).length > 0
+        ? JSON.stringify(
+            Object.keys(opts)
+                .sort((a, b) => a.localeCompare(b))
+                .reduce((acc, key) => {
+                    acc[key] = canonicalValue(opts[key]);
+                    return acc;
+                }, {})
+          )
+        : '';
+    
     if (includeFop) {
-        return `${fopName}-v${version}-${optionsPart}`;
+        return `${fopName}-v${version}-${sortedOpts}`;
     }
-    return `global-v${version}-${optionsPart}`;
+    return `global-v${version}-${sortedOpts}`;
 }

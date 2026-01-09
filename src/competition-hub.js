@@ -15,6 +15,7 @@ import path from 'path';
 import { logLearningModeStatus } from './utils/learning-mode.js';
 import { parseV2Database } from './protocol/parser-v2.js';
 import { logger } from './utils/logger.js';
+import { extractTimers, computeDisplayMode, extractDecisionState } from './utils/timer-decision-helpers.js';
 
 export class CompetitionHub extends EventEmitter {
   constructor() {
@@ -239,20 +240,64 @@ export class CompetitionHub extends EventEmitter {
         lastUpdate: Date.now()
       };
       
-      // Broadcast to browsers - even if we're requesting database
-      this.broadcast({
-        type: 'fop_update',
-        fop: fopName,
-        data: normalizedParams,
-        timestamp: Date.now()
-      });
-      
-      // Also emit as EventEmitter for consumers using .on()
-      this.emit('fop_update', {
-        fop: fopName,
-        data: normalizedParams,
-        timestamp: Date.now()
-      });
+      // Emit distinct event types based on messageType (timer, decision, update)
+      // Timer events send minimal payload but include computed displayMode for full context
+      if (messageType === 'timer') {
+        // Use shared helpers to extract timer state with full FOP context
+        const { timer: athleteTimer, breakTimer } = extractTimers(mergedState);
+        const decision = extractDecisionState(mergedState);
+        const { displayMode } = computeDisplayMode(athleteTimer, breakTimer, decision);
+        
+        const timerPayload = {
+          state: athleteTimer.state,
+          timeRemaining: athleteTimer.timeRemaining,
+          startTime: parseInt(normalizedParams.athleteStartTimeMillis || 0),
+          duration: athleteTimer.duration,
+          visible: athleteTimer.visible,
+          breakState: breakTimer.state,
+          breakRemaining: breakTimer.timeRemaining,
+          breakVisible: breakTimer.visible
+        };
+        logger.log(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
+        this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
+        this.emit('timer', { fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
+      }
+      // Decision events send minimal payload but include computed displayMode for full context
+      else if (messageType === 'decision') {
+        // Use shared helpers to extract state with full FOP context
+        const { timer: athleteTimer, breakTimer } = extractTimers(mergedState);
+        const decision = extractDecisionState(mergedState);
+        const { displayMode } = computeDisplayMode(athleteTimer, breakTimer, decision);
+        
+        // Use extracted decision state (has ref1/ref2/ref3 mapped to 'good'/'bad'/null)
+        const decisionPayload = {
+          type: decision.type,
+          ref1: decision.ref1,
+          ref2: decision.ref2,
+          ref3: decision.ref3,
+          visible: decision.visible,
+          down: decision.down,
+          isSingleReferee: decision.isSingleReferee,
+          athleteName: normalizedParams.fullName || null,
+          attemptNumber: normalizedParams.attemptNumber || null
+        };
+        this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
+        this.emit('decision', { fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
+      }
+      // Regular updates broadcast fop_update with full data
+      else {
+        this.broadcast({
+          type: 'fop_update',
+          fop: fopName,
+          data: normalizedParams,
+          timestamp: Date.now()
+        });
+        this.emit('fop_update', {
+          fop: fopName,
+          data: normalizedParams,
+          timestamp: Date.now()
+        });
+      }
       
       // Check if we have initialized database state
       if (!this.databaseState || !this.databaseState.athletes || this.databaseState.athletes.length === 0) {

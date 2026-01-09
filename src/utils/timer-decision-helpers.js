@@ -19,10 +19,11 @@
 export function extractTimers(fopUpdate, language = 'en') {
 	const athleteEvent = fopUpdate?.athleteTimerEventType;
 	const athleteTimeRemaining = parseInt(fopUpdate?.athleteMillisRemaining || 0);
-	
-	// Check if platform is inactive - if so, no timers should be visible
+
+	// Treat explicit timer events as active even if stale fopState says INACTIVE
 	const fopState = String(fopUpdate?.fopState || '').toUpperCase();
-	const isInactive = fopState === 'INACTIVE';
+	const hasTimerSignal = Boolean(athleteEvent || fopUpdate?.breakTimerEventType);
+	const isInactive = fopState === 'INACTIVE' && !hasTimerSignal;
 
 	// Athlete timer state - simple mapping
 	const athleteState = athleteEvent === 'StartTime' ? 'running' : 

@@ -29,3 +29,6 @@ export { extractRecordsFromUpdate } from './records-extractor.js';
 
 // Records display and sorting
 export { formatCategoryDisplay, sortRecordsList, sortRecordsByFederation } from './records-display.js';
+
+// Message formatting
+export { formatMessage } from './message-format.js';
