@@ -156,7 +156,17 @@ export async function handleBinaryMessage(buffer, hub) {
 					}
 					const versionCheck = isVersionAcceptable(potentialVersion);
 					if (!versionCheck.valid) {
-						logger.error(`[BINARY] ❌ Protocol version validation failed: ${versionCheck.error}`);
+						logger.error(`[BINARY] ❌ Protocol version validation failed: ${versionCheck.reason}`);
+						try {
+							hub?.reportProtocolError?.({
+								reason: versionCheck.reason || 'Protocol version validation failed',
+								received: potentialVersion,
+								minimum: versionCheck.minimum,
+								source: 'binary'
+							});
+						} catch (e) {
+							// Non-fatal
+						}
 						return;
 					}
 

@@ -4,6 +4,9 @@
  * Central location for protocol versioning and compatibility checks.
  * 
  * Version Format: "MAJOR.MINOR.PATCH" (semantic versioning)
+ *
+ * OWLCMS prereleases may include a suffix like "-rc08". For compatibility checks we ignore any
+ * prerelease/build suffix and compare only MAJOR.MINOR.PATCH.
  * - MAJOR: Breaking changes to message format or message types
  * - MINOR: New message types or new fields added (backward compatible)
  * - PATCH: Bug fixes, internal improvements (backward compatible)
@@ -15,22 +18,27 @@
  */
 
 /**
- * Current protocol version supported by this tracker
- * Matches PROTOCOL_VERSION in Java backend WebSocketEventSender.java
+ * Current protocol version supported by this tracker.
+ *
+ * We align the protocol version with the OWLCMS producer version, since OWLCMS is the authoritative
+ * source of message formats.
+ *
+ * Must match the version emitted by the Java backend WebSocketEventSender.java.
  */
-export const PROTOCOL_VERSION = '2.3.0';
+export const PROTOCOL_VERSION = '64.0.0';
 
 /**
- * Minimum protocol version accepted from OWLCMS
- * 
- * Version 2.2.0 provides all core functionality. Later versions add additional features:
- * - 2.3.0: Team points settings (IWF defaults will be used for older versions)
+ * Minimum protocol version accepted from OWLCMS.
+ *
+ * The tracker expects OWLCMS 64.0.0+ to ensure message compatibility.
  */
-export const MINIMUM_PROTOCOL_VERSION = '2.2.0';
+export const MINIMUM_PROTOCOL_VERSION = '64.0.0';
 
 /**
- * Parse semantic version string into components
- * @param {string} version - Version string like "2.0.0"
+ * Parse semantic version string into components.
+ * Accepts optional prerelease/build suffix (e.g. "64.0.0-rc08").
+ *
+ * @param {string} version - Version string like "64.0.0" or "64.0.0-rc08"
  * @returns {object|null} - {major, minor, patch} or null if invalid
  */
 export function parseVersion(version) {
@@ -38,7 +46,7 @@ export function parseVersion(version) {
 		return null;
 	}
 
-	const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+	const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
 	if (!match) {
 		return null;
 	}
@@ -131,6 +139,7 @@ export function extractAndValidateVersion(message) {
 		return {
 			valid: false,
 			version: null,
+			minimum: MINIMUM_PROTOCOL_VERSION,
 			error: 'Message is not a valid object'
 		};
 	}
@@ -141,6 +150,7 @@ export function extractAndValidateVersion(message) {
 		return {
 			valid: false,
 			version: null,
+			minimum: MINIMUM_PROTOCOL_VERSION,
 			error: 'Message missing "version" field. Expected format: {"version":"2.0.0","type":"...","payload":{...}}'
 		};
 	}
@@ -149,6 +159,7 @@ export function extractAndValidateVersion(message) {
 	return {
 		valid: versionCheck.valid,
 		version: version,
+		minimum: versionCheck.minimum || MINIMUM_PROTOCOL_VERSION,
 		error: versionCheck.valid ? null : versionCheck.reason
 	};
 }

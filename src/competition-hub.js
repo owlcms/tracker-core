@@ -64,6 +64,10 @@ export class CompetitionHub extends EventEmitter {
 
     // Per-FOP version counters for cache invalidation
     this._fopVersions = {};
+
+    // Protocol validation status (used to surface protocol mismatch to UIs)
+    // Shape: { timestamp, received, minimum, reason, source }
+    this._protocolError = null;
     
     // Injected callback for requesting resources from OWLCMS (set by websocket-server)
     this._requestResourcesCallback = null;
@@ -82,6 +86,51 @@ export class CompetitionHub extends EventEmitter {
     
     // Indicate system is ready
     logger.log('[Hub] Competition Hub initialized');
+  }
+
+  /**
+   * Get the most recent protocol error, if any.
+   * @returns {object|null}
+   */
+  getProtocolError() {
+    return this._protocolError;
+  }
+
+  /**
+   * Record a protocol error and emit a hub event for UIs.
+   * @param {object} params
+   * @param {string} params.reason
+   * @param {string|null} [params.received]
+   * @param {string|null} [params.minimum]
+   * @param {string} [params.source] - 'text' | 'binary' | other
+   */
+  reportProtocolError({ reason, received = null, minimum = null, source = 'text' } = {}) {
+    if (!reason || typeof reason !== 'string') {
+      return;
+    }
+
+    this._protocolError = {
+      timestamp: Date.now(),
+      received,
+      minimum,
+      reason,
+      source
+    };
+
+    // Global event (no FOP)
+    this.emit('protocol_error', this._protocolError);
+  }
+
+  /**
+   * Clear the protocol error latch once we receive a valid frame.
+   */
+  clearProtocolError() {
+    if (!this._protocolError) {
+      return;
+    }
+
+    this._protocolError = null;
+    this.emit('protocol_ok', { timestamp: Date.now() });
   }
 
   /**

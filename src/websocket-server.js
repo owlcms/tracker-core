@@ -340,6 +340,16 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				const versionCheck = extractAndValidateVersion(message);
 				if (!versionCheck.valid) {
 					logger.error(`[WebSocket] ❌ Version validation failed: ${versionCheck.error}`);
+					try {
+						hubInstance?.reportProtocolError?.({
+							reason: versionCheck.error,
+							received: versionCheck.version,
+							minimum: versionCheck.minimum,
+							source: 'text'
+						});
+					} catch (e) {
+						// Non-fatal: UI surfacing only
+					}
 					ws.send(JSON.stringify({
 						status: 400,
 						error: 'Protocol version check failed',
@@ -352,6 +362,11 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					return;
 				}
 				logger.info(`[WebSocket] ✅ Protocol version validated: ${versionCheck.version}`);
+				try {
+					hubInstance?.clearProtocolError?.();
+				} catch (e) {
+					// Non-fatal
+				}
 				
 				// Capture message in learning mode using explicit WebSocket type
 				if (LEARNING_MODE) {
