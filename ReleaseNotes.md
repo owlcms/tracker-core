@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.2
+1.2.1: protocol_ok and protocol_mismatch events emitted when the protocol version matches or not.
 1.2.0: fixed event emission for timer and decision events to enable SSE-only propagation by consumers
 1.2.0: made the cache keys respect a canonical order and respect Unicode names for platforms and options.
 1.2.0: support substitutions in translation patterns using the Java MessageFormat
