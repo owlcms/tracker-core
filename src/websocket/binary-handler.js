@@ -170,6 +170,13 @@ export async function handleBinaryMessage(buffer, hub) {
 						return;
 					}
 
+					// Version is valid - clear any previously latched protocol error
+					try {
+						hub?.clearProtocolError?.();
+					} catch (e) {
+						// Non-fatal
+					}
+
 					protocolVersion = potentialVersion;
 					offset = 4 + firstLength;
 

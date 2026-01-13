@@ -2514,6 +2514,9 @@ export class CompetitionHub extends EventEmitter {
 
   refresh() {
     logger.log('[Hub] Forcing refresh - clearing ALL state (database, session, translations, flags)');
+    // If OWLCMS disconnected, any previously latched protocol mismatch is no longer actionable.
+    // Clear it so consumers return to "waiting" mode until a new connection establishes.
+    this._protocolError = null;
     this.state = null;
     this.databaseState = null;
     this.fopUpdates = {};
