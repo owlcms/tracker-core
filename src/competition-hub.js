@@ -246,25 +246,55 @@ export class CompetitionHub extends EventEmitter {
       const isTimerOrDecision = messageType === 'timer' || messageType === 'decision';
       const now = Date.now();
       const prevDataUpdate = this.fopUpdates[fopName]?.lastDataUpdate || now;
+      const existingState = this.fopUpdates[fopName] || {};
 
       // Debug: Check currentAthleteKey in incoming update
-      const oldKey = this.fopUpdates[fopName]?.currentAthleteKey;
+      const oldKey = existingState.currentAthleteKey;
       const newKey = normalizedParams.currentAthleteKey;
       logger.log(`[Hub] currentAthleteKey transition for FOP ${fopName}: ${oldKey} -> ${newKey} (exists in update: ${normalizedParams.hasOwnProperty('currentAthleteKey')})`);
       
-      // Build merged state
-      const mergedState = {
-        ...this.fopUpdates[fopName], // Keep existing state (timer, etc.)
-        ...normalizedParams,                 // Merge new data
-        lastUpdate: now,
-        lastDataUpdate: isTimerOrDecision ? prevDataUpdate : now,
-        fop: fopName
-      };
+      // Build merged state based on message type
+      // For UPDATE messages: use new data as base, only preserve timer/decision state if not in this message
+      // For TIMER/DECISION messages: preserve existing state, only update timer/decision fields
+      let mergedState;
       
-      // Clear currentAthleteKey if not present in new update (prevents stale athlete data)
-      if (!normalizedParams.currentAthleteKey && mergedState.currentAthleteKey) {
-        logger.log(`[Hub] Clearing stale currentAthleteKey for FOP ${fopName}`);
-        delete mergedState.currentAthleteKey;
+      if (isTimerOrDecision) {
+        // Timer/decision: preserve existing state, only update timer/decision fields
+        mergedState = {
+          ...existingState,
+          ...normalizedParams,
+          lastUpdate: now,
+          lastDataUpdate: prevDataUpdate,  // Don't update lastDataUpdate for timer/decision
+          fop: fopName
+        };
+      } else {
+        // UPDATE message: start fresh with new data
+        // Only preserve timer fields if they're not in this update (timer state is sent separately)
+        const timerFields = ['athleteTimerEventType', 'athleteMillisRemaining', 'athleteStartTimeMillis', 
+                           'breakTimerEventType', 'breakMillisRemaining', 'breakStartTimeMillis', 'timeAllowed'];
+        const decisionFields = ['decisionEventType', 'd1', 'd2', 'd3', 'decisionsVisible', 'down'];
+        
+        // Start with incoming data as the base (this ensures missing fields become undefined/null)
+        mergedState = {
+          ...normalizedParams,
+          lastUpdate: now,
+          lastDataUpdate: now,
+          fop: fopName
+        };
+        
+        // Preserve timer state if not in this update
+        for (const field of timerFields) {
+          if (!(field in normalizedParams) && (field in existingState)) {
+            mergedState[field] = existingState[field];
+          }
+        }
+        
+        // Preserve decision state if not in this update  
+        for (const field of decisionFields) {
+          if (!(field in normalizedParams) && (field in existingState)) {
+            mergedState[field] = existingState[field];
+          }
+        }
       }
       
       this.fopUpdates[fopName] = mergedState;
@@ -581,13 +611,16 @@ export class CompetitionHub extends EventEmitter {
     // Always set leaders field (either from params or empty array)
     result.leaders = (params.leaders && typeof params.leaders === 'object') ? params.leaders : [];
 
-    // Break/ceremony state
+    // Break/ceremony state - pass through values as-is (missing fields become undefined)
+    // The merge logic in handleUpdate() now handles stale data by starting fresh for UPDATE messages
     if (params.break === 'true') {
       result.isBreak = true;
       result.breakType = params.breakType;
       result.ceremonyType = params.ceremonyType;
     } else {
       result.isBreak = false;
+      result.breakType = null;
+      result.ceremonyType = null;
     }
 
     // Display settings
