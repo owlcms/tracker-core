@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.3
+1.3.2: forcefully clean-up all update fields that owlcms sent as null to prevent stale info
 1.3.1: emit protocol_ok and protocol_mismatch events when the protocol version matchco or not.
 
 
