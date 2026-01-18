@@ -2473,6 +2473,29 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
+   * Translate a key using locale fallback chain
+   * Returns '!Key' if translation is not found (makes missing translations visible)
+   * 
+   * Fallback order:
+   * 1. Exact locale match (e.g., 'fr-CA')
+   * 2. Base language (e.g., 'fr')
+   * 3. English fallback
+   * 4. '!Key' pattern for missing keys
+   * 
+   * @param {string} key - Translation key (e.g., 'Scoreboard.Start')
+   * @param {string} locale - Language locale code (default 'en')
+   * @returns {string} Translated string or '!Key' if not found
+   */
+  translate(key, locale = 'en') {
+    if (!key) return '';
+    
+    const translationMap = this.getTranslations({ locale });
+    
+    // Return translation if found, otherwise '!Key' to make missing translations visible
+    return translationMap[key] ?? `!${key}`;
+  }
+
+  /**
    * Get all available translation locales
    * @returns {Array<string>} Array of locale codes (e.g., ['en', 'fr', 'es'])
    */
