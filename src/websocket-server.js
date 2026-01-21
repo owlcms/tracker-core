@@ -19,6 +19,10 @@ let wss = null;
 let activeConnection = null; // Track active WebSocket connection for sending messages
 let hubInstance = null; // Injected hub instance from attach/inject mode
 
+// Global guard to prevent attaching WebSocket to the same server twice
+// Uses a WeakMap keyed by server instance so each server can only have one WebSocket attached
+const attachedServers = new WeakMap();
+
 /**
  * Close the active OWLCMS connection to force a full reconnect
  * OWLCMS will automatically reconnect and resend all data (database, flags, translations, etc.)
@@ -120,6 +124,13 @@ export function attachWebSocketToServer(options = {}) {
 		throw new Error('attachWebSocketToServer requires hub option');
 	}
 	
+	// Prevent double-attach to the same server instance
+	// This can happen when both start-with-ws.js and hooks.server.js try to attach
+	if (attachedServers.has(server)) {
+		logger.debug('[WebSocket] Server already has WebSocket attached, skipping duplicate');
+		return attachedServers.get(server);
+	}
+	
 	// Store injected hub instance
 	hubInstance = hub;
 	
@@ -135,7 +146,12 @@ export function attachWebSocketToServer(options = {}) {
 	logger.info(`[WebSocket] Local files directory: ${localFilesDir || 'default (./local)'}`);
 	logger.info(`[WebSocket] Local URL prefix: ${localUrlPrefix}`);
 	
-	return initWebSocketServer(server, path, { onConnect, onDisconnect, onMessage, onError });
+	const handler = initWebSocketServer(server, path, { onConnect, onDisconnect, onMessage, onError });
+	
+	// Mark this server as having WebSocket attached
+	attachedServers.set(server, handler);
+	
+	return handler;
 }
 
 /**
