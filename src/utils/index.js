@@ -22,7 +22,7 @@ export { buildCacheKey } from './cache-utils.js';
 export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAndDecisionState } from './timer-decision-helpers.js';
 
 // Attempt bar visibility
-export { computeAttemptBarVisibility, hasCurrentAthlete } from './attempt-bar-visibility.js';
+export { computeAttemptBarVisibility, hasCurrentAthlete, logAttemptBarDebug } from './attempt-bar-visibility.js';
 
 // Records extraction
 export { extractRecordsFromUpdate } from './records-extractor.js';
@@ -35,3 +35,16 @@ export { formatMessage } from './message-format.js';
 
 // Parsing utilities
 export { parseFormattedNumber } from './parsing-utils.js';
+
+// Cache registry for coordinated cache invalidation
+export { registerCache, unregisterCache, getCacheEpoch, bumpCacheEpoch, getRegisteredCacheCount } from './cache-registry.js';
+
+// Presentation helpers (break messages, session info, attempt labels)
+export { 
+	isBreakMode, 
+	buildSessionInfo, 
+	buildAttemptLabel, 
+	inferGroupName, 
+	inferBreakMessage, 
+	extractCurrentAttempt 
+} from './presentation-helpers.js';

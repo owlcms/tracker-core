@@ -7,7 +7,19 @@
 
 import { competitionHub, EVENT_TYPES } from '../src/index.js';
 import { attachWebSocketToServer, createWebSocketServer } from '../src/websocket/index.js';
-import { getFlagUrl, buildCacheKey } from '../src/utils/index.js';
+import { 
+	getFlagUrl, 
+	buildCacheKey, 
+	registerCache, 
+	bumpCacheEpoch, 
+	getCacheEpoch,
+	isBreakMode,
+	buildSessionInfo,
+	buildAttemptLabel,
+	inferGroupName,
+	inferBreakMessage,
+	extractCurrentAttempt
+} from '../src/utils/index.js';
 import { calculateSinclair2024, calculateQPoints, calculateGamx, calculateTeamPoints } from '../src/scoring/index.js';
 
 console.log('✓ Testing tracker-core public API entrypoints...\n');
@@ -33,7 +45,21 @@ console.log(`  createWebSocketServer: ${typeof createWebSocketServer === 'functi
 // Test 4: Utility functions
 console.log('Test 4: Utility functions');
 console.log(`  getFlagUrl: ${typeof getFlagUrl === 'function' ? '✓' : '✗'}`);
-console.log(`  buildCacheKey: ${typeof buildCacheKey === 'function' ? '✓' : '✗'}\n`);
+console.log(`  buildCacheKey: ${typeof buildCacheKey === 'function' ? '✓' : '✗'}`);
+console.log(`  registerCache: ${typeof registerCache === 'function' ? '✓' : '✗'}`);
+console.log(`  bumpCacheEpoch: ${typeof bumpCacheEpoch === 'function' ? '✓' : '✗'}`);
+console.log(`  getCacheEpoch: ${typeof getCacheEpoch === 'function' ? '✓' : '✗'}\n`);
+
+// Test 4b: Presentation helpers
+console.log('Test 4b: Presentation helpers');
+console.log(`  isBreakMode: ${typeof isBreakMode === 'function' ? '✓' : '✗'}`);
+console.log(`  isBreakMode('SESSION_DONE'): ${isBreakMode('SESSION_DONE') === true ? '✓' : '✗'}`);
+console.log(`  isBreakMode('CURRENT_ATHLETE'): ${isBreakMode('CURRENT_ATHLETE') === false ? '✓' : '✗'}`);
+console.log(`  buildSessionInfo: ${typeof buildSessionInfo === 'function' ? '✓' : '✗'}`);
+console.log(`  buildAttemptLabel: ${typeof buildAttemptLabel === 'function' ? '✓' : '✗'}`);
+console.log(`  inferGroupName: ${typeof inferGroupName === 'function' ? '✓' : '✗'}`);
+console.log(`  inferBreakMessage: ${typeof inferBreakMessage === 'function' ? '✓' : '✗'}`);
+console.log(`  extractCurrentAttempt: ${typeof extractCurrentAttempt === 'function' ? '✓' : '✗'}\n`);
 
 // Test 5: Scoring functions
 console.log('Test 5: Scoring functions');
