@@ -32,3 +32,6 @@ export { formatCategoryDisplay, sortRecordsList, sortRecordsByFederation } from 
 
 // Message formatting
 export { formatMessage } from './message-format.js';
+
+// Parsing utilities
+export { parseFormattedNumber } from './parsing-utils.js';

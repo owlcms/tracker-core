@@ -960,6 +960,22 @@ const teamPoints = calculateTeamPoints({
 
 ---
 
+### Parsing Utilities
+
+```javascript
+import { parseFormattedNumber } from '@owlcms/tracker-core/utils';
+
+// Parse numbers with European decimal commas or standard decimals
+parseFormattedNumber("123.45");  // → 123.45
+parseFormattedNumber("123,45");  // → 123.45 (European format)
+parseFormattedNumber(123.45);    // → 123.45
+parseFormattedNumber("");        // → 0
+parseFormattedNumber("-");       // → 0
+parseFormattedNumber(null);      // → 0
+```
+
+---
+
 ### Cache Utilities
 
 ```javascript

@@ -2261,7 +2261,8 @@ export class CompetitionHub extends EventEmitter {
     const isNew = !this.translations[locale];
     
     // 1. Extract base locale from regional variant (e.g., 'fr' from 'fr-CA')
-    const baseLocale = locale.includes('-') ? locale.split('-')[0] : null;
+    const localeStr = String(locale || 'en');
+    const baseLocale = localeStr.includes('-') ? localeStr.split('-')[0] : null;
     
     // 2. If this is a regional variant, merge with base locale if available
     let mergedMap = decodedMap;
@@ -2444,23 +2445,24 @@ export class CompetitionHub extends EventEmitter {
    */
   getTranslations(arg = {}) {
     const locale = typeof arg === 'string' ? arg : (arg?.locale || 'en');
+    const localeStr = String(locale || 'en');
     // 1. Try exact match
-    if (this.translations[locale]) {
-      return this.translations[locale];
+    if (this.translations[localeStr]) {
+      return this.translations[localeStr];
     }
     
     // 2. Try base language (e.g., 'pt' from 'pt-PT')
-    if (locale.includes('-')) {
-      const baseLanguage = locale.split('-')[0];
+    if (localeStr.includes('-')) {
+      const baseLanguage = localeStr.split('-')[0];
       if (this.translations[baseLanguage]) {
-        logger.log(`[Hub] Locale '${locale}' not found, falling back to base language '${baseLanguage}'`);
+        logger.log(`[Hub] Locale '${localeStr}' not found, falling back to base language '${baseLanguage}'`);
         return this.translations[baseLanguage];
       }
     }
     
     // 3. Fall back to English
-    if (locale !== 'en' && this.translations['en']) {
-      logger.log(`[Hub] Locale '${locale}' not found, falling back to English`);
+    if (localeStr !== 'en' && this.translations['en']) {
+      logger.log(`[Hub] Locale '${localeStr}' not found, falling back to English`);
       return this.translations['en'];
     }
     
