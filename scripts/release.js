@@ -30,22 +30,50 @@ try {
   console.log(`\n📦 Updating package.json to version ${newVersion}...`);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   const oldVersion = packageJson.version;
-  packageJson.version = newVersion;
-  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+  
+  // Check if version is already set
+  if (packageJson.version === newVersion) {
+    console.log(`⚠️  Version ${newVersion} already set in package.json`);
+  } else {
+    packageJson.version = newVersion;
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+  }
 
-  // 2. Git Commit
-  console.log('💾 Committing change...');
-  execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
-  execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
+  // 2. Git Commit (only if there are changes)
+  const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' });
+  if (status.trim()) {
+    console.log('💾 Committing change...');
+    execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
+    execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
+  } else {
+    console.log('⚠️  No changes to commit (working tree clean)');
+  }
 
-  // 3. Git Tag
-  console.log(`🏷️  Creating tag ${newVersion}...`);
-  execSync(`git tag ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  // 3. Git Tag (only if tag doesn't exist)
+  const tags = execSync('git tag -l', { cwd: rootDir, encoding: 'utf8' });
+  if (tags.split('\n').includes(newVersion)) {
+    console.log(`⚠️  Tag ${newVersion} already exists`);
+  } else {
+    console.log(`🏷️  Creating tag ${newVersion}...`);
+    execSync(`git tag ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  }
 
   // 4. Git Push
   console.log('🚀 Pushing to remote...');
-  execSync('git push', { cwd: rootDir, stdio: 'inherit' });
-  execSync(`git push origin ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  try {
+    execSync('git push', { cwd: rootDir, stdio: 'inherit' });
+  } catch (error) {
+    // Branch might already be up to date
+    console.log('⚠️  Branch already up to date on remote');
+  }
+  
+  // Push tag if it doesn't exist on remote
+  try {
+    execSync(`git push origin ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
+  } catch (error) {
+    // Tag might already exist on remote
+    console.log(`⚠️  Tag ${newVersion} already exists on remote`);
+  }
 
   console.log(`\n✅ Successfully released ${newVersion}`);
   console.log(`   Previous: ${oldVersion}`);
