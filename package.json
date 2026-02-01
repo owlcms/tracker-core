@@ -1,6 +1,6 @@
 {
   "name": "@owlcms/tracker-core",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "description": "Competition hub and WebSocket ingestion core for OWLCMS tracker",
   "type": "module",
   "main": "./src/index.js",
