@@ -308,22 +308,22 @@ async function handleFlagsMessage(zipBuffer, hub) {
 				fs.writeFileSync(targetPath, entry.getData());
 				extractedCount++;
 
-				// Track first 10 flag file names
-				if (flagFileNames.length < 10) {
-					flagFileNames.push(entry.entryName);
-				}
+				// Track all flag file names for logging
+				flagFileNames.push(entry.entryName);
 			}
 		});
 
 		const elapsed = Date.now() - startTime;
 		logger.log(`[FLAGS] ✅ Extracted ${extractedCount} flag files in ${elapsed}ms`);
-		if (process.env.SANITY_DEBUG === 'true') {
-			// Log first 10 flags from this extraction
-			if (flagFileNames.length > 0) {
-				logger.log('[Sanity] First 10 flags from this extraction:');
-				flagFileNames.forEach((name, index) => {
-					logger.log(`  ${index + 1}. ${name}`);
-				});
+		
+		// Log all extracted flags for verification
+		if (flagFileNames.length > 0) {
+			logger.info('[FLAGS] Extracted flags:');
+			flagFileNames.forEach((name, index) => {
+				logger.info(`  ${index + 1}. ${name}`);
+			});
+			if (extractedCount > flagFileNames.length) {
+				logger.info(`  ... and ${extractedCount - flagFileNames.length} more files`);
 			}
 		}
 
