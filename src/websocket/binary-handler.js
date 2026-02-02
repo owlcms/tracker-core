@@ -85,7 +85,7 @@ async function verifySanityAfterTranslations(hub) {
 		// Count total keys across all locales
 		let totalKeys = 0;
 		for (const locale of availableLocales) {
-			const translationMap = hub.getTranslations(locale);
+			const translationMap = hub.getTranslations({ locale });
 			if (translationMap && typeof translationMap === 'object') {
 				totalKeys += Object.keys(translationMap).length;
 			}
