@@ -25,6 +25,21 @@ if (!/^\d+\.\d+\.\d+/.test(newVersion)) {
   process.exit(1);
 }
 
+// Check for dirty worktree (uncommitted changes)
+try {
+  const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' });
+  if (status.trim()) {
+    console.error('❌ Error: Working tree is dirty. Please commit or stash changes before releasing.');
+    console.error('\nUncommitted changes:');
+    console.error(status);
+    process.exit(1);
+  }
+} catch (error) {
+  console.error('❌ Error: Failed to check git status');
+  console.error(error.message);
+  process.exit(1);
+}
+
 try {
   // 1. Update package.json
   console.log(`\n📦 Updating package.json to version ${newVersion}...`);
@@ -39,15 +54,10 @@ try {
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
   }
 
-  // 2. Git Commit (only if there are changes)
-  const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' });
-  if (status.trim()) {
-    console.log('💾 Committing change...');
-    execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
-    execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
-  } else {
-    console.log('⚠️  No changes to commit (working tree clean)');
-  }
+  // 2. Git Commit
+  console.log('💾 Committing change...');
+  execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
+  execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
 
   // 3. Git Tag (only if tag doesn't exist)
   const tags = execSync('git tag -l', { cwd: rootDir, encoding: 'utf8' });
