@@ -1029,11 +1029,11 @@ export class CompetitionHub extends EventEmitter {
   
   /**
    * Get the latest UPDATE message for a specific FOP
-   * @param {string} fopName - Name of the FOP (e.g., 'A', 'B')
+   * @param {Object} options - Options object
+   * @param {string} options.fopName - Name of the FOP (e.g., 'A', 'B')
    * @returns {Object|null} Latest update data with precomputed liftingOrderAthletes, sessionAthletes, etc.
    */
-  getFopUpdate(arg = {}) {
-    const fopName = typeof arg === 'string' ? arg : (arg?.fopName || 'A');
+  getFopUpdate({ fopName = 'A' } = {}) {
     return this.fopUpdates[fopName] || null;
   }
 
@@ -1230,11 +1230,11 @@ export class CompetitionHub extends EventEmitter {
   
   /**
    * Get session status for a specific FOP
-   * @param {object|string} arg - Either `{ fopName }` or legacy fopName string
+   * @param {Object} options - Options object
+   * @param {string} options.fopName - Name of the FOP
    * @returns {Object} Session status { isDone, sessionName, lastActivity }
    */
-  getSessionStatus(arg = {}) {
-    const fopName = typeof arg === 'string' ? arg : (arg?.fopName || 'A');
+  getSessionStatus({ fopName = 'A' } = {}) {
     return this.fopSessionStatus[fopName] || { 
       isDone: false, 
       sessionName: '', 
@@ -1244,11 +1244,11 @@ export class CompetitionHub extends EventEmitter {
   
   /**
    * Check if a session is done for a specific FOP
-   * @param {string} fopName - Name of the FOP
+   * @param {Object} options - Options object
+   * @param {string} options.fopName - Name of the FOP
    * @returns {boolean} True if session is complete
    */
-  isSessionDone(arg = {}) {
-    const fopName = typeof arg === 'string' ? arg : (arg?.fopName || 'A');
+  isSessionDone({ fopName = 'A' } = {}) {
     const status = this.fopSessionStatus[fopName];
     return status ? status.isDone : false;
   }
@@ -2443,8 +2443,7 @@ export class CompetitionHub extends EventEmitter {
    * @param {string} locale - Language locale code (default 'en')
    * @returns {object|null} Translation map with fallback chain applied
    */
-  getTranslations(arg = {}) {
-    const locale = typeof arg === 'string' ? arg : (arg?.locale || 'en');
+  getTranslations({ locale = 'en' } = {}) {
     const localeStr = String(locale || 'en');
     // 1. Try exact match
     if (this.translations[localeStr]) {
