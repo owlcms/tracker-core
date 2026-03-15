@@ -224,7 +224,7 @@ UPDATE messages also include ordering arrays that reference athletes by key:
 
 **Type:** `"decision"`
 
-**Purpose:** Referee decision lights and down signal
+**Purpose:** Referee decisions, jury-driven decision outcomes, deliberation lifecycle, and down signal
 
 **Key Payload Fields:**
 
@@ -232,6 +232,11 @@ UPDATE messages also include ordering arrays that reference athletes by key:
   - `FULL_DECISION` - All three referees have decided
   - `RESET` - Decisions cleared
   - `DOWN_SIGNAL` - Bar has been lowered
+  - `JURY_DECISION` - Jury outcome on a challenged / reviewed lift
+  - `START_DELIBERATION` - Jury deliberation has started
+  - `END_DELIBERATION` - Jury deliberation has ended
+  - `CHALLENGE` - Challenge sequence has started
+  - `END_CHALLENGE` - Challenge sequence has ended
 - `updateKey` - Validation key
 - `mode` - Board display mode
 - `competitionName` - Name of the competition
@@ -244,8 +249,16 @@ UPDATE messages also include ordering arrays that reference athletes by key:
 - `d3` - Referee 3 decision
 - `decisionsVisible` - Boolean indicating if lights should be shown
 - `down` - Boolean indicating down signal
+- Jury-decision-specific fields when `decisionEventType="JURY_DECISION"`:
+  - `juryDecision` - `GOOD_LIFT` or `BAD_LIFT`
+  - `juryReversal` - Boolean indicating whether the jury reversed the original result
+  - `athleteFull` - Athlete full name
+  - `athleteAbbreviated` - Athlete abbreviated name
+  - `waitForAnnouncer` - Boolean indicating whether announcer confirmation is still pending
+  - `recordKind` - `none`, `new`, or `denied`
+  - `actualLift` - Signed lift value when provided
 
-**Frequency:** Sent when referees make decisions or bar is lowered
+**Frequency:** Sent when referees make decisions, when jury deliberation / challenge state changes, when a jury outcome is announced, or when the bar is lowered
 
 ---
 
@@ -621,6 +634,29 @@ When `fr-CA` is requested but `fr` is the base:
 }
 ```
 
+**Jury Decision Message:**
+
+```json
+{
+  "type": "decision",
+  "payload": {
+    "decisionEventType": "JURY_DECISION",
+    "updateKey": "secret123",
+    "mode": "normal",
+    "fop": "A",
+    "fopState": "DECISION_VISIBLE",
+    "break": "false",
+    "juryDecision": "GOOD_LIFT",
+    "juryReversal": "true",
+    "athleteFull": "Jane Doe",
+    "athleteAbbreviated": "DOE J.",
+    "waitForAnnouncer": "false",
+    "recordKind": "new",
+    "actualLift": "103"
+  }
+}
+```
+
 ## WebSocket-Only Architecture
 
 The tracker **only** supports WebSocket connections from OWLCMS. Legacy HTTP POST endpoints have been removed.
@@ -635,7 +671,7 @@ The tracker **only** supports WebSocket connections from OWLCMS. Legacy HTTP POS
 - `type="database"` - Full competition data (athletes, categories, FOPs)
 - `type="update"` - Lifting order changes, athlete switches, UI events
 - `type="timer"` - Timer start/stop/set events
-- `type="decision"` - Referee decisions
+- `type="decision"` - Referee decisions, jury outcomes, deliberation lifecycle
 
 ---
 
