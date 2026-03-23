@@ -1990,6 +1990,8 @@ export class CompetitionHub extends EventEmitter {
           name: update?.competitionName || this.state?.competition?.name || 'Competition'
         },
         athletes: [],
+        championships: [],
+        championshipMap: {},
         teams: [],
         initialized: false,
         lastUpdate: Date.now()
@@ -2003,6 +2005,14 @@ export class CompetitionHub extends EventEmitter {
 
     if (!Array.isArray(this.databaseState.teams)) {
       this.databaseState.teams = [];
+    }
+
+    if (!Array.isArray(this.databaseState.championships)) {
+      this.databaseState.championships = [];
+    }
+
+    if (!this.databaseState.championshipMap || typeof this.databaseState.championshipMap !== 'object') {
+      this.databaseState.championshipMap = {};
     }
 
     if (!(this.databaseAthleteIndex instanceof Map)) {

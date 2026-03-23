@@ -53,6 +53,10 @@ export function parseV2Database(params) {
   
   // Parse age groups and categories
   const categories = extractV2Categories(db.ageGroups || []);
+
+  // Parse championships exported as symbolic entities keyed by name
+  const championships = normalizeV2Championships(db.championships || []);
+  const championshipMap = buildChampionshipMap(championships);
   
   // Parse platforms/FOPs
   const fops = extractV2FOPs(db.platforms || []);
@@ -74,6 +78,8 @@ export function parseV2Database(params) {
     formatVersion: '2.0',
     exportDate: db.exportDate || null,
     athletes,
+    championships,
+    championshipMap,
     ageGroups: db.ageGroups || [],
     categories,
     fops,
@@ -102,7 +108,7 @@ export function parseV2Database(params) {
     databaseChecksum: providedChecksum || db.databaseChecksum || null
   };
   
-    logger.info(`[V2 Parser] ✅ Parsed ${athletes.length} athletes, ${categories.length} categories, ${fops.length} FOPs, ${records.length} records, ${technicalOfficials.length} officials, ${technicalOfficialsTimetable.length} timetable entries`);
+    logger.info(`[V2 Parser] ✅ Parsed ${athletes.length} athletes, ${categories.length} categories, ${championships.length} championships, ${fops.length} FOPs, ${records.length} records, ${technicalOfficials.length} officials, ${technicalOfficialsTimetable.length} timetable entries`);
   
   return result;
 }
@@ -120,6 +126,80 @@ function buildTeamMap(teams) {
     }
   }
   return map;
+}
+
+/**
+ * Build championship name -> championship object lookup map.
+ * Championship name is the symbolic key referenced by ageGroup.championshipName.
+ * @param {Array} championships - V2 championships array
+ * @returns {Object} Plain object keyed by championship name
+ */
+function buildChampionshipMap(championships) {
+  const map = {};
+  for (const championship of championships) {
+    if (championship?.name) {
+      map[championship.name] = championship;
+    }
+  }
+  return map;
+}
+
+/**
+ * Normalize championship objects while preserving unknown future fields.
+ * This makes championship storage explicit rather than relying on raw pass-through.
+ * Ensures all expected fields are present (defaulting to null) and
+ * preserves any unknown future fields via object spread.
+ *
+ * @param {Array} championships - V2 championships array (from ChampionshipDTO)
+ * @returns {Array} Normalized championship objects
+ */
+function normalizeV2Championships(championships) {
+  if (!Array.isArray(championships)) {
+    return [];
+  }
+  return championships
+    .map(normalizeV2Championship)
+    .filter(Boolean);
+}
+
+function normalizeV2Championship(championship) {
+  if (!championship || typeof championship !== 'object') {
+    return null;
+  }
+
+  // V2 ChampionshipDTO fields (from owlcms ChampionshipDTO.java):
+  //   name, type, scoringSystem, bestAthleteScoringSystem,
+  //   bestSnatchScoringSystem, bestCJScoringSystem, snatchCJTotalMedals,
+  //   teamPoints1st/2nd/3rd, mensBestN, womensBestN,
+  //   mixedMensBestN, mixedWomensBestN, mixedBestN,
+  //   explicitTeamSize, maxTeamSize, maxPerCategory,
+  //   explicitMixedTeamMembers, teamScoringSystem, mixedTeamScoringSystem
+  //
+  // Spread preserves any unknown future fields added by OWLCMS.
+  return {
+    ...championship,
+    name: championship.name ?? null,
+    type: championship.type ?? null,
+    scoringSystem: championship.scoringSystem ?? null,
+    bestAthleteScoringSystem: championship.bestAthleteScoringSystem ?? null,
+    bestSnatchScoringSystem: championship.bestSnatchScoringSystem ?? null,
+    bestCJScoringSystem: championship.bestCJScoringSystem ?? null,
+    snatchCJTotalMedals: championship.snatchCJTotalMedals ?? null,
+    teamPoints1st: championship.teamPoints1st ?? null,
+    teamPoints2nd: championship.teamPoints2nd ?? null,
+    teamPoints3rd: championship.teamPoints3rd ?? null,
+    mensBestN: championship.mensBestN ?? null,
+    womensBestN: championship.womensBestN ?? null,
+    mixedMensBestN: championship.mixedMensBestN ?? null,
+    mixedWomensBestN: championship.mixedWomensBestN ?? null,
+    mixedBestN: championship.mixedBestN ?? null,
+    explicitTeamSize: championship.explicitTeamSize ?? null,
+    maxTeamSize: championship.maxTeamSize ?? null,
+    maxPerCategory: championship.maxPerCategory ?? null,
+    explicitMixedTeamMembers: championship.explicitMixedTeamMembers ?? null,
+    teamScoringSystem: championship.teamScoringSystem ?? null,
+    mixedTeamScoringSystem: championship.mixedTeamScoringSystem ?? null
+  };
 }
 
 /**

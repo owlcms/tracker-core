@@ -1,5 +1,39 @@
 # Tracker Core API Reference
 
+### Championships (in database state)
+
+```
+  championships: Array<{
+    name: string,                          // Championship identifier (e.g. "Senior", "U20")
+    type: string,                          // ChampionshipType enum (e.g. "IWF", "MASTERS")
+    scoringSystem: string | null,          // Primary ranking algorithm
+    bestAthleteScoringSystem: string | null,
+    bestSnatchScoringSystem: string | null,
+    bestCJScoringSystem: string | null,
+    snatchCJTotalMedals: boolean,
+    teamPoints1st: number | null,
+    teamPoints2nd: number | null,
+    teamPoints3rd: number | null,
+    mensBestN: number | null,              // Top N men to score
+    womensBestN: number | null,            // Top N women to score
+    mixedMensBestN: number | null,         // Top N men in mixed team
+    mixedWomensBestN: number | null,       // Top N women in mixed team
+    mixedBestN: number | null,             // Total top N for mixed team
+    explicitTeamSize: number | null,       // Fixed team size (or null)
+    maxTeamSize: number | null,            // Roster capacity
+    maxPerCategory: number | null,         // Max athletes per category per team
+    explicitMixedTeamMembers: boolean,     // Require explicit mixed member assignment
+    teamScoringSystem: string | null,      // Team ranking algorithm
+    mixedTeamScoringSystem: string | null  // Mixed team ranking algorithm
+  }>,
+  championshipMap: {
+    [name: string]: Championship           // Keyed by championship name
+  },
+```
+
+Field names match the V2 ChampionshipDTO from OWLCMS exactly.
+Unknown future fields sent by OWLCMS are preserved via object spread.
+
 **Package:** `@owlcms/tracker-core`
 
 This document provides a complete reference for all APIs exposed by the Tracker Core package.
