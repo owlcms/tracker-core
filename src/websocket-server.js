@@ -44,28 +44,59 @@ export function closeConnection() {
 	}
 }
 
+function sendPreconditionRequest({ missing, message, reason, logLabel }) {
+	if (!activeConnection || activeConnection.readyState !== 1) {
+		logger.warn(`[WebSocket] Cannot request ${logLabel} - no active OWLCMS connection`);
+		return false;
+	}
+
+	if (!Array.isArray(missing) || missing.length === 0) {
+		return false;
+	}
+
+	logger.info(`[WebSocket] ${message}: ${missing.join(', ')}`);
+	activeConnection.send(JSON.stringify({
+		status: 428,
+		message,
+		reason,
+		missing
+	}));
+	return true;
+}
+
+/**
+ * Request a fresh competition database from OWLCMS on the active WebSocket.
+ *
+ * Intended for document generators and other consumers that need a full,
+ * current database snapshot before rendering.
+ *
+ * @returns {boolean} true if the request was sent, false if no active connection exists
+ */
+export function requestDatabaseRefresh() {
+	return sendPreconditionRequest({
+		missing: ['database'],
+		message: 'Precondition Required: Fresh database requested',
+		reason: 'database_refresh',
+		logLabel: 'database refresh'
+	});
+}
+
 /**
  * Request resources from OWLCMS
  * Called by plugins when they need resources that aren't loaded yet
  * @param {string[]} resources - Array of resource types to request (e.g., ['flags_zip', 'logos_zip'])
  */
 export function requestResources(resources) {
-	if (!activeConnection || activeConnection.readyState !== 1) {
-		logger.warn('[WebSocket] Cannot request resources - no active OWLCMS connection');
-		return;
-	}
-	
 	if (!resources || resources.length === 0) {
-		return;
+		return false;
 	}
-	
-	logger.info(`[WebSocket] 📦 Requesting resources from OWLCMS: ${resources.join(', ')}`);
-	activeConnection.send(JSON.stringify({
-		status: 428,
+
+	return sendPreconditionRequest({
+		missing: resources,
 		message: 'Precondition Required: Plugin needs resources',
 		reason: 'plugin_preconditions',
-		missing: resources
-	}));
+		logLabel: 'resources'
+	});
 }
 
 /**

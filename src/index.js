@@ -21,7 +21,7 @@ export { logger, setLogger, getLogger } from './utils/logger.js';
 export { handleBinaryMessage } from './websocket/binary-handler.js';
 
 // Export WebSocket control functions
-export { closeConnection, requestResources } from './websocket-server.js';
+export { closeConnection, requestDatabaseRefresh, requestResources } from './websocket-server.js';
 
 // Export event types enum
 export const EVENT_TYPES = {

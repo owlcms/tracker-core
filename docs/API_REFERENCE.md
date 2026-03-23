@@ -835,6 +835,58 @@ httpServer.listen(8095, () => {
 
 ---
 
+### WebSocket Refresh Helpers
+
+These helpers send a 428-style precondition request back to OWLCMS over the
+active WebSocket connection.
+
+#### `requestDatabaseRefresh()`
+
+Requests a fresh `database_zip` payload from OWLCMS.
+
+```javascript
+import { competitionHub, requestDatabaseRefresh } from '@owlcms/tracker-core';
+
+const requested = requestDatabaseRefresh();
+if (requested) {
+  await competitionHub.waitForDatabase();
+}
+```
+
+**Returns:** `boolean`
+
+- `true` if the request was sent on an active OWLCMS connection
+- `false` if no active OWLCMS WebSocket connection exists
+
+**Use case:** Document generators or reports that need a full, current database
+before rendering.
+
+#### `requestResources(resources)`
+
+Requests optional ZIP resources such as flags, logos, or pictures.
+
+```javascript
+import { requestResources } from '@owlcms/tracker-core';
+
+requestResources(['flags_zip', 'logos_zip']);
+```
+
+**Returns:** `boolean`
+
+#### `closeConnection()`
+
+Closes the active OWLCMS connection to force a reconnect and full startup sync.
+
+```javascript
+import { closeConnection } from '@owlcms/tracker-core';
+
+closeConnection();
+```
+
+**Returns:** `boolean`
+
+---
+
 ### WebSocket Configuration Options
 
 Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:

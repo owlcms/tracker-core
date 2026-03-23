@@ -1,5 +1,9 @@
 Release Notes
 
+## Version 1.4
+- 1.4.0: Added support for explicit Championship entities now present in JSON V2 exports
+- 1.4.0: Added `requestDatabaseRefresh()` helper so document generators can request a fresh database snapshot from OWLCMS over the active WebSocket connection
+
 ## Version 1.3
 1.3.3: Translation routines now report missing keys by returning !key (similar to owlcms)
 1.3.2: forcefully clean-up all update fields that owlcms sent as null to prevent stale info

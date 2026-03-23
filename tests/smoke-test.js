@@ -21,6 +21,7 @@ import {
 	extractCurrentAttempt
 } from '../src/utils/index.js';
 import { calculateSinclair2024, calculateQPoints, calculateGamx, calculateTeamPoints } from '../src/scoring/index.js';
+import { closeConnection, requestDatabaseRefresh, requestResources } from '../src/index.js';
 
 console.log('✓ Testing tracker-core public API entrypoints...\n');
 
@@ -40,7 +41,10 @@ console.log(`  EVENT_TYPES.DECISION: ${EVENT_TYPES.DECISION === 'decision' ? '�
 // Test 3: WebSocket functions
 console.log('Test 3: WebSocket integration');
 console.log(`  attachWebSocketToServer: ${typeof attachWebSocketToServer === 'function' ? '✓' : '✗'}`);
-console.log(`  createWebSocketServer: ${typeof createWebSocketServer === 'function' ? '✓' : '✗'}\n`);
+console.log(`  createWebSocketServer: ${typeof createWebSocketServer === 'function' ? '✓' : '✗'}`);
+console.log(`  closeConnection: ${typeof closeConnection === 'function' ? '✓' : '✗'}`);
+console.log(`  requestDatabaseRefresh: ${typeof requestDatabaseRefresh === 'function' ? '✓' : '✗'}`);
+console.log(`  requestResources: ${typeof requestResources === 'function' ? '✓' : '✗'}\n`);
 
 // Test 4: Utility functions
 console.log('Test 4: Utility functions');

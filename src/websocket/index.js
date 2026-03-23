@@ -6,4 +6,10 @@
  * 2. Inject: attachWebSocketToServer(options) - attaches to existing HTTP server
  */
 
-export { createWebSocketServer, attachWebSocketToServer } from '../websocket-server.js';
+export {
+	attachWebSocketToServer,
+	closeConnection,
+	createWebSocketServer,
+	requestDatabaseRefresh,
+	requestResources
+} from '../websocket-server.js';
