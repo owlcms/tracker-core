@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.4
+- 1.4.1: Cleaned up Championship support
 - 1.4.0: Added support for explicit Championship entities now present in JSON V2 exports
 - 1.4.0: Added `requestDatabaseRefresh()` helper so document generators can request a fresh database snapshot from OWLCMS over the active WebSocket connection
 
