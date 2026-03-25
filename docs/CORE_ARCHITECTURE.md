@@ -26,6 +26,10 @@ The hub maintains several state stores to serve requests without re-reading raw 
 
 - **`databaseState`** – Full competition database from OWLCMS (athletes, teams, categories, competition settings, records, etc.). Refreshed when `database` or `database_zip` messages arrive. **Critical:** The hub also merges `sessionAthletes` from update messages back into `databaseState` to keep the database synchronized with current session data (attempts, totals, rankings). This ensures long-running scoreboards always see fresh attempt data even between full database refreshes.
 
+  **Championships** are stored within `databaseState` as `championships` (array) and `championshipMap` (name-keyed lookup). These are parsed by `normalizeV2Championships()` in `parser-v2.js` from the V2 `ChampionshipDTO` objects sent by OWLCMS. Each championship contains team scoring rules (best-N counts, scoring systems, mixed team settings) used by document generators like the IWF results book. Championship names are the symbolic keys referenced by `ageGroup.championshipName` on each age group.
+
+  **`lastDatabaseLoad`** – Timestamp (`Date.now()`) of the most recent database load. Used by document generators to detect whether a fresh database has arrived after requesting a refresh via `_requestResourcesCallback`.
+
 - **`fopUpdates`** – Per-FOP map keyed by `fopName` (e.g., `'Platform_A'`). Each entry merges the latest `update`, `timer`, and `decision` payloads for that platform, giving downstream helpers one-stop access to lifting order, timer state, and decision lights. The `sessionAthletes` field contains database athlete info enriched with precomputed display data (current athlete flag, etc.). The `startOrderAthletes` and `liftingOrderAthletes` arrays are lightweight ID lists (plus spacer rows) that reference session athlete objects without duplicating data.
 
 ### Translation and Asset Stores

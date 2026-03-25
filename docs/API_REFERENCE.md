@@ -44,7 +44,8 @@ This document provides a complete reference for all APIs exposed by the Tracker 
 
 1. [Hub Data Access Methods](#hub-data-access-methods)
    - [Core Data Access](#core-data-access) - 14 methods including athlete getters
-   - [Less Common Methods](#less-common-methods) - 3 utility methods
+   - [Less Common Methods](#less-common-methods) - utility methods
+   - [WebSocket Callback Methods](#websocket-callback-methods) - connection and resource request wiring
 2. [Event System](#event-system)
 3. [WebSocket Server Integration](#websocket-server-integration)
 4. [Utility Modules](#utility-modules)
@@ -84,6 +85,9 @@ import { competitionHub } from '@owlcms/tracker-core';
 | `setLocalFilesDir({ localFilesDir })` | Configure local assets base directory |
 | `setLogger(logger)` | Inject custom logger (defaults to console) |
 | `logger` | Logger facade with error/warn/info/debug/trace/log(level, ...) |
+| `setRequestResourcesCallback(fn)` | Inject WebSocket resource request callback |
+| `requestPluginPreconditions(missing, timeout)` | Request resources and wait for delivery |
+| `lastDatabaseLoad` | Timestamp of last database load (for freshness checks) |
 
 **Local assets URL prefix (`localUrlPrefix`)**
 
@@ -606,6 +610,63 @@ competitionHub.setLocalFilesDir({ localFilesDir: '/var/data/tracker-local' });
 
 ---
 
+### WebSocket Callback Methods
+
+These methods wire the hub to the WebSocket layer. They are called automatically by `attachWebSocketToServer()` during initialization — you only need these if building a custom WebSocket integration.
+
+#### `setRequestResourcesCallback(callback)`
+
+Injects a function that sends 428-style precondition requests to OWLCMS over the active WebSocket connection. Called once during `attachWebSocketToServer()` initialization.
+
+**Parameters:**
+- `callback` (Function) - `(resources: string[]) => boolean` — sends a resource request, returns `true` if sent
+
+```javascript
+// Normally called automatically by attachWebSocketToServer().
+// Only use directly if building a custom WebSocket transport:
+competitionHub.setRequestResourcesCallback((resources) => {
+  myWebSocket.send(JSON.stringify({ status: 428, missing: resources }));
+  return true;
+});
+```
+
+---
+
+#### `requestPluginPreconditions(missing, timeoutMs)`
+
+Requests resources from OWLCMS and waits for their delivery (via `flags_loaded`, `logos_loaded`, etc. events). Uses the callback injected by `setRequestResourcesCallback()`.
+
+**Parameters:**
+- `missing` (Array<string>) - Resource types to request (e.g., `['flags_zip', 'logos_zip']`)
+- `timeoutMs` (number, default 30000) - Maximum wait time
+
+**Returns:** `Promise<boolean>` — `true` if all resources loaded, `false` on timeout
+
+```javascript
+const loaded = await competitionHub.requestPluginPreconditions(['flags_zip', 'logos_zip'], 10000);
+if (!loaded) {
+  console.warn('Some resources did not arrive in time');
+}
+```
+
+---
+
+#### `lastDatabaseLoad`
+
+Timestamp (`Date.now()`) of the most recent database load. Used by document generators to detect whether a fresh database has arrived after requesting a refresh.
+
+**Type:** `number` (epoch ms)
+
+```javascript
+const baseline = competitionHub.lastDatabaseLoad;
+// ... request refresh ...
+if (competitionHub.lastDatabaseLoad > baseline) {
+  console.log('Fresh database received');
+}
+```
+
+---
+
 #### Logging (`setLogger`, `logger`)
 
 Tracker-core exposes a lightweight, pluggable logger facade. By default it forwards to `console` but you can inject any logger with the usual severity methods (`error`, `warn`, `info`, `debug`, `trace`).
@@ -929,6 +990,40 @@ Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:
 
 ---
 
+### Architecture Note: Hub Singleton and Connection Ownership
+
+When `attachWebSocketToServer()` (or `createWebSocketServer()`) runs, two things happen internally:
+
+1. An `activeConnection` variable is set when OWLCMS connects over WebSocket.
+2. The `requestResources` function (which has closure over `activeConnection`) is injected into the hub via `hub.setRequestResourcesCallback(requestResources)`.
+
+The hub is a **`globalThis` singleton** (`globalThis.__competitionHub`), so it is the same object across the entire Node.js process regardless of how modules are loaded or bundled.
+
+**Why this matters:** In environments like Vite, the same `@owlcms/tracker-core` package can be instantiated multiple times — once by `vite.config.js` (Node-level import) and again by SvelteKit SSR (Vite-transformed import). Each instance gets its own `activeConnection`. Only the instance that runs `attachWebSocketToServer()` has the real OWLCMS connection.
+
+**Rule for consumers:** To send messages back to OWLCMS (e.g., requesting a database refresh), **always go through the hub** rather than importing `requestResources` or `requestDatabaseRefresh` directly:
+
+```javascript
+// ✅ CORRECT — works in all environments
+import { competitionHub } from '@owlcms/tracker-core';
+
+// The hub always holds the callback from the instance that owns the connection
+competitionHub._requestResourcesCallback(['database']);
+
+// Or use the public method for plugin preconditions
+await competitionHub.requestPluginPreconditions(['flags_zip', 'logos_zip']);
+```
+
+```javascript
+// ❌ RISKY — may get a different module instance with no active connection
+import { requestResources } from '@owlcms/tracker-core';
+requestResources(['database']);  // Can fail silently if module was duplicated
+```
+
+This is only relevant when tracker-core is used inside a bundler (Vite, Webpack, etc.) that may create multiple module instances. In standalone Node.js scripts, direct imports work fine because there is only one module instance.
+
+---
+
 ## Local Files (flags/logos/pictures/styles)
 
 OWLCMS can send ZIP resources (e.g., `flags_zip`, `logos_zip`, `translations_zip`) over the same WebSocket connection.
@@ -1065,7 +1160,7 @@ parseFormattedNumber(null);      // → 0
 ### Cache Utilities
 
 ```javascript
-import { buildCacheKey } from '@owlcms/tracker-core/cache';
+import { buildCacheKey } from '@owlcms/tracker-core/utils';
 
 const cacheKey = buildCacheKey({
   fopName: 'Platform A',
@@ -1078,6 +1173,46 @@ const cacheKey = buildCacheKey({
 });
 // "Platform_A-M-10-sinclair"
 ```
+
+---
+
+### Cache Registry
+
+Coordinates cache invalidation across plugins. When the epoch is bumped, all registered caches are cleared atomically.
+
+```javascript
+import {
+  registerCache,
+  unregisterCache,
+  getCacheEpoch,
+  bumpCacheEpoch,
+  getRegisteredCacheCount
+} from '@owlcms/tracker-core/utils';
+
+// Register a Map-based cache at module load time
+const myCache = new Map();
+registerCache(myCache);
+
+// Read current epoch (monotonically increasing counter)
+const epoch = getCacheEpoch();
+
+// Bump epoch — clears ALL registered caches
+const newEpoch = bumpCacheEpoch();
+
+// Check how many caches are registered
+const count = getRegisteredCacheCount();
+
+// Unregister on cleanup
+unregisterCache(myCache);
+```
+
+| Function | Returns | Purpose |
+|---|---|---|
+| `registerCache(cacheMap)` | `void` | Register a `Map` to be cleared on epoch bump |
+| `unregisterCache(cacheMap)` | `void` | Remove a cache from the registry |
+| `getCacheEpoch()` | `number` | Current epoch value |
+| `bumpCacheEpoch()` | `number` | Increment epoch and clear all registered caches |
+| `getRegisteredCacheCount()` | `number` | Number of registered caches |
 
 ---
 
@@ -1114,8 +1249,9 @@ const { timers, decision } = extractTimerAndDecisionState(fopUpdate);
 ```javascript
 import { 
   computeAttemptBarVisibility,
-  hasCurrentAthlete
-} from '@owlcms/tracker-core/helpers';
+  hasCurrentAthlete,
+  logAttemptBarDebug
+} from '@owlcms/tracker-core/utils';
 
 const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
 
@@ -1126,7 +1262,59 @@ const showAttemptBar = computeAttemptBarVisibility(fopUpdate);
 // Check if there's a current athlete
 const hasCurrent = hasCurrentAthlete(fopUpdate);
 // true if currentAthleteKey is set
+
+// Log detailed debug info about attempt bar state (uses logger.debug)
+logAttemptBarDebug(fopUpdate);
 ```
+
+---
+
+### Presentation Helpers
+
+Helpers for scoreboard display: break messages, session info, attempt labels, and current athlete extraction. All functions that need translations accept a `hub` parameter with a `translate(key, locale)` method.
+
+```javascript
+import {
+  isBreakMode,
+  buildSessionInfo,
+  buildAttemptLabel,
+  inferGroupName,
+  inferBreakMessage,
+  extractCurrentAttempt
+} from '@owlcms/tracker-core/utils';
+
+const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
+
+// Check if current mode is a break
+isBreakMode('INTERRUPTION');     // true
+isBreakMode('CURRENT_ATHLETE');  // false
+
+// Build session info string: "Session M1 – Snatch"
+const sessionInfo = buildSessionInfo(fopUpdate, competitionHub, 'en');
+
+// Build attempt label: "Snatch #2" or "C&J #1"
+const attemptLabel = buildAttemptLabel(fopUpdate, competitionHub, 'en');
+
+// Get group name for break display: "Group M1"
+const groupName = inferGroupName(fopUpdate, competitionHub, 'en');
+
+// Get break message: "Competition Paused", "Introduction of Athletes", etc.
+const breakMsg = inferBreakMessage('TECHNICAL', null, competitionHub, 'en');
+
+// Extract current attempt (or break info) for scoreboard overlays
+const current = extractCurrentAttempt(fopUpdate, competitionHub, getFlagUrl, 'en');
+// Returns: { fullName, teamName, flagUrl, categoryName, attempt, weight, isBreak, ... }
+// Returns null if no current athlete and not in break mode
+```
+
+| Function | Parameters | Returns |
+|---|---|---|
+| `isBreakMode(mode)` | `string` | `boolean` |
+| `buildSessionInfo(fopUpdate, hub, locale)` | FOP update, hub with `translate()`, locale | `string` |
+| `buildAttemptLabel(fopUpdate, hub, locale)` | FOP update, hub with `translate()`, locale | `string` |
+| `inferGroupName(fopUpdate, hub, locale)` | FOP update, hub with `translate()`, locale | `string` |
+| `inferBreakMessage(breakType, ceremonyType, hub, locale)` | break type, ceremony type, hub, locale | `string` |
+| `extractCurrentAttempt(fopUpdate, hub, getFlagUrl, locale)` | FOP update, hub, flag URL fn, locale | `Object\|null` |
 
 ---
 

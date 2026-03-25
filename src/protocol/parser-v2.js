@@ -197,6 +197,7 @@ function normalizeV2Championship(championship) {
     maxTeamSize: championship.maxTeamSize ?? null,
     maxPerCategory: championship.maxPerCategory ?? null,
     explicitMixedTeamMembers: championship.explicitMixedTeamMembers ?? null,
+    mixedTeamEnabled: championship.mixedTeamEnabled ?? false,
     teamScoringSystem: championship.teamScoringSystem ?? null,
     mixedTeamScoringSystem: championship.mixedTeamScoringSystem ?? null
   };
