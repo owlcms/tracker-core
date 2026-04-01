@@ -17,6 +17,24 @@ import { parseV2Database } from './protocol/parser-v2.js';
 import { logger } from './utils/logger.js';
 import { extractTimers, computeDisplayMode, extractDecisionState } from './utils/timer-decision-helpers.js';
 
+function parseOptionalMillis(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function deriveLegacyAthleteWarningThresholds(duration) {
+  if (duration === 120000) {
+    return { athleteInitialWarningMillis: 90000, athleteFinalWarningMillis: 30000 };
+  }
+  if (duration === 60000) {
+    return { athleteInitialWarningMillis: -1, athleteFinalWarningMillis: 30000 };
+  }
+  return { athleteInitialWarningMillis: null, athleteFinalWarningMillis: null };
+}
+
 export class CompetitionHub extends EventEmitter {
   constructor() {
     super();
@@ -271,6 +289,7 @@ export class CompetitionHub extends EventEmitter {
         // UPDATE message: start fresh with new data
         // Only preserve timer fields if they're not in this update (timer state is sent separately)
         const timerFields = ['athleteTimerEventType', 'athleteMillisRemaining', 'athleteStartTimeMillis', 
+                           'athleteInitialWarningMillis', 'athleteFinalWarningMillis',
                            'breakTimerEventType', 'breakMillisRemaining', 'breakStartTimeMillis', 'timeAllowed'];
         const decisionFields = ['decisionEventType', 'd1', 'd2', 'd3', 'decisionsVisible', 'down'];
         
@@ -296,6 +315,8 @@ export class CompetitionHub extends EventEmitter {
           }
         }
       }
+
+      this._applyAthleteWarningFallbacks(mergedState);
       
       this.fopUpdates[fopName] = mergedState;
 
@@ -332,6 +353,8 @@ export class CompetitionHub extends EventEmitter {
           timeRemaining: athleteTimer.timeRemaining,
           startTime: parseInt(normalizedParams.athleteStartTimeMillis || 0),
           duration: athleteTimer.duration,
+          initialWarningMillis: athleteTimer.initialWarningMillis,
+          finalWarningMillis: athleteTimer.finalWarningMillis,
           visible: athleteTimer.visible,
           breakState: breakTimer.state,
           breakRemaining: breakTimer.timeRemaining,
@@ -664,10 +687,14 @@ export class CompetitionHub extends EventEmitter {
     // OWLCMS includes timer info in the main update
     // Look for timer-related parameters
     if (params.timeAllowed && params.timeRemaining !== undefined) {
+      const duration = parseInt(params.timeAllowed);
+      const legacy = deriveLegacyAthleteWarningThresholds(duration);
       return {
         state: params.timeRemaining > 0 ? 'running' : 'stopped',
-        timeAllowed: parseInt(params.timeAllowed),
+        timeAllowed: duration,
         timeRemaining: parseInt(params.timeRemaining || 0),
+        initialWarningMillis: parseOptionalMillis(params.athleteInitialWarningMillis) ?? legacy.athleteInitialWarningMillis,
+        finalWarningMillis: parseOptionalMillis(params.athleteFinalWarningMillis) ?? legacy.athleteFinalWarningMillis,
         indefinite: params.indefinite === 'true'
       };
     }
@@ -677,8 +704,29 @@ export class CompetitionHub extends EventEmitter {
       state: 'stopped',
       timeAllowed: 60000,
       timeRemaining: 0,
+      initialWarningMillis: -1,
+      finalWarningMillis: 30000,
       indefinite: false
     };
+  }
+
+  _applyAthleteWarningFallbacks(state) {
+    if (!state) {
+      return;
+    }
+
+    const explicitInitial = parseOptionalMillis(state.athleteInitialWarningMillis);
+    const explicitFinal = parseOptionalMillis(state.athleteFinalWarningMillis);
+
+    let duration = parseOptionalMillis(state.timeAllowed);
+    if (duration === null && (state.athleteTimerEventType === 'SetTime' || state.athleteTimerEventType === 'StartTime')) {
+      duration = parseOptionalMillis(state.athleteMillisRemaining);
+    }
+
+    const legacy = deriveLegacyAthleteWarningThresholds(duration);
+
+    state.athleteInitialWarningMillis = explicitInitial ?? legacy.athleteInitialWarningMillis;
+    state.athleteFinalWarningMillis = explicitFinal ?? legacy.athleteFinalWarningMillis;
   }
 
   /**

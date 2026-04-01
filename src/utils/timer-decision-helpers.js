@@ -3,6 +3,52 @@
  * Used by all scoreboards for consistent timer/break/decision handling
  */
 
+function parseOptionalMillis(value) {
+	if (value === undefined || value === null || value === '') {
+		return null;
+	}
+	const parsed = parseInt(value, 10);
+	return Number.isNaN(parsed) ? null : parsed;
+}
+
+function deriveLegacyAthleteWarningThresholds(duration) {
+	if (duration === 120000) {
+		return { initialWarningMillis: 90000, finalWarningMillis: 30000 };
+	}
+	if (duration === 60000) {
+		return { initialWarningMillis: -1, finalWarningMillis: 30000 };
+	}
+	return { initialWarningMillis: null, finalWarningMillis: null };
+}
+
+function resolveAthleteDuration(fopUpdate, athleteTimeRemaining, athleteEvent) {
+	const explicitDuration = parseOptionalMillis(fopUpdate?.timeAllowed);
+	if (explicitDuration !== null) {
+		return explicitDuration;
+	}
+
+	if ((athleteEvent === 'SetTime' || athleteEvent === 'StartTime') && (athleteTimeRemaining === 120000 || athleteTimeRemaining === 60000)) {
+		return athleteTimeRemaining;
+	}
+
+	return 60000;
+}
+
+function resolveAthleteWarningThresholds(fopUpdate, athleteDuration) {
+	let initialWarningMillis = parseOptionalMillis(fopUpdate?.athleteInitialWarningMillis);
+	let finalWarningMillis = parseOptionalMillis(fopUpdate?.athleteFinalWarningMillis);
+
+	const legacy = deriveLegacyAthleteWarningThresholds(athleteDuration);
+	if (initialWarningMillis === null) {
+		initialWarningMillis = legacy.initialWarningMillis;
+	}
+	if (finalWarningMillis === null) {
+		finalWarningMillis = legacy.finalWarningMillis;
+	}
+
+	return { initialWarningMillis, finalWarningMillis };
+}
+
 // =============================================================================
 // TIMER AND DECISION EXTRACTION
 // =============================================================================
@@ -19,6 +65,8 @@
 export function extractTimers(fopUpdate, language = 'en') {
 	const athleteEvent = fopUpdate?.athleteTimerEventType;
 	const athleteTimeRemaining = parseInt(fopUpdate?.athleteMillisRemaining || 0);
+	const athleteDuration = resolveAthleteDuration(fopUpdate, athleteTimeRemaining, athleteEvent);
+	const { initialWarningMillis, finalWarningMillis } = resolveAthleteWarningThresholds(fopUpdate, athleteDuration);
 
 	// Treat explicit timer events as active even if stale fopState says INACTIVE
 	const fopState = String(fopUpdate?.fopState || '').toUpperCase();
@@ -37,7 +85,9 @@ export function extractTimers(fopUpdate, language = 'en') {
 		isActive: !isInactive && Boolean(athleteEvent || athleteTimeRemaining > 0),
 		visible: !isInactive && Boolean(athleteEvent || athleteTimeRemaining > 0),
 		timeRemaining: athleteTimeRemaining,
-		duration: fopUpdate?.timeAllowed ? parseInt(fopUpdate.timeAllowed) : 60000,
+		duration: athleteDuration,
+		initialWarningMillis,
+		finalWarningMillis,
 		startTime: null
 	};
 

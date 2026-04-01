@@ -203,6 +203,19 @@ UPDATE messages also include ordering arrays that reference athletes by key:
 - `athleteMillisRemaining` - Milliseconds remaining on athlete clock
 - `athleteStartTimeMillis` - Absolute start time for athlete timer
 - `timeAllowed` - Total time allowed for athlete (usually 60000ms)
+- `athleteInitialWarningMillis` - Initial-warning threshold in milliseconds, or `-1` when disabled
+- `athleteFinalWarningMillis` - Final-warning threshold in milliseconds, or `-1` when disabled
+
+**Athlete warning examples:**
+
+- 2:00 clock: `timeAllowed=120000`, `athleteInitialWarningMillis=90000`, `athleteFinalWarningMillis=30000`
+- 1:00 clock: `timeAllowed=60000`, `athleteInitialWarningMillis=-1`, `athleteFinalWarningMillis=30000`
+
+**Legacy fallback in tracker-core:**
+
+- If these warning fields are absent and the incoming athlete clock is an older OWLCMS timer message, tracker-core derives the current legacy behavior from the athlete duration:
+  - `120000` -> initial `90000`, final `30000`
+  - `60000` -> initial `-1`, final `30000`
 
 **Break Timer Fields:**
 - `breakTimerEventType` - Timer event type for break clock:
