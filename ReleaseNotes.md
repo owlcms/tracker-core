@@ -1,5 +1,8 @@
 Release Notes
 
+## Version 1.5
+- 1.5.0: Process owlcms values for timer warning delays
+
 ## Version 1.4
 - 1.4.1: Cleaned up Championship support
 - 1.4.0: Added support for explicit Championship entities now present in JSON V2 exports
