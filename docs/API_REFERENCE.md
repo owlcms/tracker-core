@@ -38,6 +38,29 @@ Unknown future fields sent by OWLCMS are preserved via object spread.
 
 This document provides a complete reference for all APIs exposed by the Tracker Core package.
 
+## Scoring Helpers
+
+The scoring module exports year-aware helpers for Sinclair-style calculations.
+
+```javascript
+import {
+  calculateSinclair,
+  calculateSinclairMasters,
+  getMastersAgeFactor,
+  normalizeSinclairYear,
+  normalizeMastersAgeFactorYear
+} from '@owlcms/tracker-core/scoring';
+```
+
+- `calculateSinclair(total, bodyWeight, gender, year)` supports `2020`, `2024`, and `2028`.
+- `calculateSinclairMasters(total, bodyWeight, gender, age, sinclairYear, ageFactorYear)` supports:
+  - base Sinclair years `2020`, `2024`, `2028`
+  - masters age-factor years `2020` and `2025`
+- `getMastersAgeFactor(age, gender, ageFactorYear)` uses:
+  - `2020` for the standard SMF/SMHF table
+  - `2025` for the alternate published masters age table
+- `normalizeMastersAgeFactorYear(value)` normalizes string or numeric input to `2020` or `2025`.
+
 ---
 
 ## Table of Contents
@@ -1075,21 +1098,29 @@ All public scoring functions accept a single object parameter (no positional arg
 
 ```javascript
 import { 
+	calculateSinclair,
   calculateSinclair2024,
   calculateSinclair2020,
+	calculateSinclair2028,
+	calculateSinclairMasters,
   getMastersAgeFactor
 } from '@owlcms/tracker-core/scoring';
 
-// Preferred object form
-const sinclair2024 = calculateSinclair2024({ total: 220, bodyWeight: 88.5, gender: 'M' });
+const sinclair2024 = calculateSinclair2024(220, 88.5, 'M');
 // 285.432
 
-const sinclair2020 = calculateSinclair2020({ total: 220, bodyWeight: 88.5, gender: 'M' });
+const sinclair2020 = calculateSinclair2020(220, 88.5, 'M');
 // 283.156
 
+const sinclair2028 = calculateSinclair2028(220, 88.5, 'M');
+// 279.091
+
+const configurableSinclair = calculateSinclair(220, 88.5, 'M', 2028);
+// 279.091
+
 // Masters age adjustment
-const ageFactor = getMastersAgeFactor({ age: 45, gender: 'M' });
-const adjustedSinclair = sinclair2024 * ageFactor;
+const ageFactor = getMastersAgeFactor(45, 'M');
+const adjustedSinclair = calculateSinclairMasters(220, 88.5, 'M', 45, 2024);
 
 ```
 

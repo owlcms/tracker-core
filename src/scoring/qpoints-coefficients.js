@@ -88,6 +88,17 @@ export function getQPointsFactor(bodyWeight, gender, age = 0) {
 }
 
 /**
+ * Get the published 2025 masters age coefficient from the QPoints tables.
+ *
+ * @param {number} age - Athlete's age
+ * @param {string} gender - 'M' or 'F'
+ * @returns {number} Age coefficient
+ */
+export function getQPointsAgeFactor(age, gender) {
+	return getAgeGenderCoefficient(age, gender);
+}
+
+/**
  * Internal calculation of QPoints factor
  * qPointsFactor = (tMax / (beta0 - beta1 * Math.pow((bw / 100.0), -2) + beta2 * Math.pow((bw / 100.0), 2)))
  * 

@@ -4,6 +4,8 @@
  * These are the current official coefficients used for international competition
  */
 
+import { getQPointsAgeFactor } from './qpoints-coefficients.js';
+
 export const SINCLAIR_COEFFICIENTS = {
 	men: {
 		coefficient: 0.722762521,
@@ -12,6 +14,21 @@ export const SINCLAIR_COEFFICIENTS = {
 	women: {
 		coefficient: 0.787004341,
 		maxWeight: 153.757
+	}
+};
+
+/**
+ * Sinclair Coefficient Lookup Table - 2028 version
+ * Based on sinclair2028.properties from OWLCMS (2025-2028 coefficients)
+ */
+export const SINCLAIR_COEFFICIENTS_2028 = {
+	men: {
+		coefficient: 0.700767819,
+		maxWeight: 201.159
+	},
+	women: {
+		coefficient: 0.674107991,
+		maxWeight: 163.918
 	}
 };
 
@@ -69,6 +86,33 @@ export const SMHF = {
 	80: 2.714
 };
 
+export const SUPPORTED_SINCLAIR_YEARS = [2020, 2024, 2028];
+export const SUPPORTED_MASTERS_AGE_FACTOR_YEARS = [2020, 2025];
+
+export function normalizeSinclairYear(year, fallback = 2024) {
+	const normalizedFallback = SUPPORTED_SINCLAIR_YEARS.includes(fallback) ? fallback : 2024;
+	const parsed = typeof year === 'number' ? year : Number.parseInt(String(year ?? '').trim(), 10);
+	return SUPPORTED_SINCLAIR_YEARS.includes(parsed) ? parsed : normalizedFallback;
+}
+
+export function normalizeMastersAgeFactorYear(year, fallback = 2020) {
+	const normalizedFallback = SUPPORTED_MASTERS_AGE_FACTOR_YEARS.includes(fallback) ? fallback : 2020;
+	const parsed = typeof year === 'number' ? year : Number.parseInt(String(year ?? '').trim(), 10);
+	return SUPPORTED_MASTERS_AGE_FACTOR_YEARS.includes(parsed) ? parsed : normalizedFallback;
+}
+
+export function getSinclairCoefficients(year = 2024) {
+	switch (normalizeSinclairYear(year)) {
+		case 2020:
+			return SINCLAIR_COEFFICIENTS_2020;
+		case 2028:
+			return SINCLAIR_COEFFICIENTS_2028;
+		case 2024:
+		default:
+			return SINCLAIR_COEFFICIENTS;
+	}
+}
+
 /**
  * Calculate Sinclair factor for an athlete
  * Sinclair = coefficient * (total / (2 * coefficient * maxWeight))^exponent
@@ -76,15 +120,17 @@ export const SMHF = {
  *
  * @param {number} bodyWeight - Athlete's bodyweight in kg
  * @param {string} gender - 'M' for male, 'F' for female
+ * @param {number} year - Coefficient year (2020, 2024, or 2028)
  * @returns {number} Sinclair factor (multiplier)
  */
-export function getSinclairFactor(bodyWeight, gender) {
+export function getSinclairFactor(bodyWeight, gender, year = 2024) {
 	if (!bodyWeight || bodyWeight <= 0) return 0;
+	const coefficientSet = getSinclairCoefficients(year);
 
 	if (gender === 'M') {
-		return sinclairFactor(bodyWeight, SINCLAIR_COEFFICIENTS.men.coefficient, SINCLAIR_COEFFICIENTS.men.maxWeight);
+		return sinclairFactor(bodyWeight, coefficientSet.men.coefficient, coefficientSet.men.maxWeight);
 	} else if (gender === 'F') {
-		return sinclairFactor(bodyWeight, SINCLAIR_COEFFICIENTS.women.coefficient, SINCLAIR_COEFFICIENTS.women.maxWeight);
+		return sinclairFactor(bodyWeight, coefficientSet.women.coefficient, coefficientSet.women.maxWeight);
 	} else {
 		return 0;
 	}
@@ -114,18 +160,19 @@ function sinclairFactor(bodyWeight, coefficient, maxWeight) {
 
 /**
  * Unified Sinclair function: accepts either an actual total or a predicted total
- * and returns the Sinclair score using the 2024 coefficients (default/latest).
+ * and returns the Sinclair score using the selected coefficients.
  * This is the single source of truth for Sinclair calculations used by plugins.
  * @param {number} totalOrPredicted - Total (actual or predicted)
  * @param {number} bodyWeight - Athlete bodyweight in kg
  * @param {string} gender - 'M' or 'F'
+ * @param {number} year - Coefficient year (2020, 2024, or 2028). Defaults to 2024.
  * @returns {number} Sinclair score
  */
-export function calculateSinclair(totalOrPredicted, bodyWeight, gender) {
+export function calculateSinclair(totalOrPredicted, bodyWeight, gender, year = 2024) {
 	if (!totalOrPredicted || totalOrPredicted <= 0) return 0;
 	if (!bodyWeight || bodyWeight <= 0) return 0;
 
-	const factor = getSinclairFactor(bodyWeight, gender);
+	const factor = getSinclairFactor(bodyWeight, gender, year);
 	return totalOrPredicted * factor;
 }
 
@@ -141,17 +188,7 @@ export function calculateSinclair(totalOrPredicted, bodyWeight, gender) {
  * @returns {number} Sinclair score (0 if invalid input)
  */
 export function calculateSinclair2024(total, bodyWeight, gender) {
-	if (!total || total <= 0) return 0;
-	if (!bodyWeight || bodyWeight <= 0) return 0;
-
-	const coeffs = gender === 'M'
-		? SINCLAIR_COEFFICIENTS.men
-		: gender === 'F'
-			? SINCLAIR_COEFFICIENTS.women
-			: null;
-	if (!coeffs) return 0;
-	const factor = sinclairFactor(bodyWeight, coeffs.coefficient, coeffs.maxWeight);
-	return total * factor;
+	return calculateSinclair(total, bodyWeight, gender, 2024);
 }
 
 /**
@@ -166,12 +203,22 @@ export function calculateSinclair2024(total, bodyWeight, gender) {
  * @returns {number} Sinclair score (0 if invalid input)
  */
 export function calculateSinclair2020(total, bodyWeight, gender) {
-	if (!total || total <= 0) return 0;
-	if (!bodyWeight || bodyWeight <= 0) return 0;
+	return calculateSinclair(total, bodyWeight, gender, 2020);
+}
 
-	const coeffs = gender === 'M' ? SINCLAIR_COEFFICIENTS_2020.men : SINCLAIR_COEFFICIENTS_2020.women;
-	const factor = sinclairFactor(bodyWeight, coeffs.coefficient, coeffs.maxWeight);
-	return total * factor;
+/**
+ * Calculate Sinclair score using the 2028 official coefficients.
+ * Coefficients (2028):
+ *  - men.coefficient = 0.700767819, men.maxWeight = 201.159
+ *  - women.coefficient = 0.674107991, women.maxWeight = 163.918
+ *
+ * @param {number} total - total (snatch + clean & jerk)
+ * @param {number} bodyWeight - athlete bodyweight in kg
+ * @param {string} gender - 'M' or 'F'
+ * @returns {number} Sinclair score (0 if invalid input)
+ */
+export function calculateSinclair2028(total, bodyWeight, gender) {
+	return calculateSinclair(total, bodyWeight, gender, 2028);
 }
 
 /**
@@ -179,10 +226,16 @@ export function calculateSinclair2020(total, bodyWeight, gender) {
  *
  * @param {number} age - Athlete's age in years
  * @param {string} gender - 'M' or 'F'
+ * @param {number} ageFactorYear - Age factor set year (2020 standard SMHF/SMF, 2025 alternate published masters factors)
  * @returns {number} Age factor multiplier (1.0 or higher)
  */
-export function getMastersAgeFactor(age, gender) {
+
+export function getMastersAgeFactor(age, gender, ageFactorYear = 2020) {
 	if (!age || age < 30) return 1.0;
+
+	if (normalizeMastersAgeFactorYear(ageFactorYear, 2020) === 2025) {
+		return getQPointsAgeFactor(age, gender);
+	}
 
 	const table = gender === 'M' ? SMF : SMHF;
 	const maxAge = gender === 'M' ? 90 : 80;
@@ -195,24 +248,26 @@ export function getMastersAgeFactor(age, gender) {
 
 /**
  * Calculate Sinclair Masters (age-adjusted) score
- * Uses 2020 Sinclair coefficients for SMHF calculations
+ * Uses the selected Sinclair coefficients for the base score before applying age factors.
  *
  * @param {number} total - Snatch + Clean & Jerk total
  * @param {number} bodyWeight - Athlete's bodyweight in kg
  * @param {string} gender - 'M' or 'F'
  * @param {number} age - Athlete's age in years
+ * @param {number} sinclairYear - Coefficient year (2020, 2024, or 2028). Defaults to 2020.
+ * @param {number} ageFactorYear - Age factor set year (2020 standard SMHF/SMF, 2025 alternate published masters factors). Defaults to 2020.
  * @returns {number} Age-adjusted Sinclair score
  */
-export function calculateSinclairMasters(total, bodyWeight, gender, age) {
+export function calculateSinclairMasters(total, bodyWeight, gender, age, sinclairYear = 2020, ageFactorYear = 2020) {
 	if (!total || total <= 0) return 0;
 	if (!bodyWeight || bodyWeight <= 0) return 0;
 
-	// Use 2020 coefficients for SMHF calculations
-	const coeffs = gender === 'M' ? SINCLAIR_COEFFICIENTS_2020.men : SINCLAIR_COEFFICIENTS_2020.women;
+	const coefficientSet = getSinclairCoefficients(sinclairYear);
+	const coeffs = gender === 'M' ? coefficientSet.men : coefficientSet.women;
 	const sinclairFactor2020 = sinclairFactor(bodyWeight, coeffs.coefficient, coeffs.maxWeight);
 	const sinclairScore = total * sinclairFactor2020;
 	
-	const ageFactor = getMastersAgeFactor(age, gender);
+	const ageFactor = getMastersAgeFactor(age, gender, ageFactorYear);
 	
 	return sinclairScore * ageFactor;
 }

@@ -20,7 +20,17 @@ import {
 	inferBreakMessage,
 	extractCurrentAttempt
 } from '../src/utils/index.js';
-import { calculateSinclair2024, calculateQPoints, calculateGamx, calculateTeamPoints } from '../src/scoring/index.js';
+import {
+	calculateSinclair,
+	calculateSinclair2024,
+	calculateSinclair2028,
+	calculateSinclairMasters,
+	getMastersAgeFactor,
+	normalizeMastersAgeFactorYear,
+	calculateQPoints,
+	calculateGamx,
+	calculateTeamPoints
+} from '../src/scoring/index.js';
 import { closeConnection, requestDatabaseRefresh, requestResources } from '../src/index.js';
 
 console.log('✓ Testing tracker-core public API entrypoints...\n');
@@ -67,9 +77,26 @@ console.log(`  extractCurrentAttempt: ${typeof extractCurrentAttempt === 'functi
 
 // Test 5: Scoring functions
 console.log('Test 5: Scoring functions');
+console.log(`  calculateSinclair: ${typeof calculateSinclair === 'function' ? '✓' : '✗'}`);
+const sinclairByYear = calculateSinclair(220, 88.5, 'M', 2028);
+console.log(`  calculateSinclair(220kg, 88.5kg, 2028): ${sinclairByYear ? '✓' : '✗'}`);
+
 console.log(`  calculateSinclair2024: ${typeof calculateSinclair2024 === 'function' ? '✓' : '✗'}`);
 const sinclair = calculateSinclair2024(220, 88.5, 'M');
 console.log(`  calculateSinclair2024(220kg, 88.5kg): ${sinclair ? '✓' : '✗'}`);
+
+console.log(`  calculateSinclair2028: ${typeof calculateSinclair2028 === 'function' ? '✓' : '✗'}`);
+const sinclair2028 = calculateSinclair2028(220, 88.5, 'M');
+console.log(`  calculateSinclair2028(220kg, 88.5kg): ${sinclair2028 ? '✓' : '✗'}`);
+
+console.log(`  calculateSinclairMasters: ${typeof calculateSinclairMasters === 'function' ? '✓' : '✗'}`);
+const mastersSinclair = calculateSinclairMasters(220, 88.5, 'M', 45, 2024);
+console.log(`  calculateSinclairMasters(220kg, 88.5kg, age 45, 2024): ${mastersSinclair ? '✓' : '✗'}`);
+const mastersSinclair2025Age = calculateSinclairMasters(220, 88.5, 'M', 91, 2024, 2025);
+console.log(`  calculateSinclairMasters(220kg, 88.5kg, age 91, 2024, 2025 age factors): ${mastersSinclair2025Age ? '✓' : '✗'}`);
+const mastersAgeFactor2025 = getMastersAgeFactor(91, 'M', 2025);
+console.log(`  getMastersAgeFactor(91, M, 2025): ${mastersAgeFactor2025 > getMastersAgeFactor(91, 'M', 2020) ? '✓' : '✗'}`);
+console.log(`  normalizeMastersAgeFactorYear('2025'): ${normalizeMastersAgeFactorYear('2025') === 2025 ? '✓' : '✗'}`);
 
 console.log(`  calculateQPoints: ${typeof calculateQPoints === 'function' ? '✓' : '✗'}`);
 const qpoints = calculateQPoints(220, 88.5, 'M');

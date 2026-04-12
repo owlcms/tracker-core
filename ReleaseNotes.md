@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.5
+- 1.5.1: Allow using 2025 age fact
 - 1.5.0: Process owlcms values for timer warning delays
 
 ## Version 1.4
