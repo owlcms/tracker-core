@@ -285,8 +285,28 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			// Track authentication status for this connection
 			let clientAuthenticated = !process.env.OWLCMS_UPDATEKEY;
 
-			// Per-connection state: track if we've received a database for this connection
-			let hasReceivedDatabase = false;
+			// Per-connection state: preload document logos once after the first real database load.
+			let hasRequestedStartupLogos = false;
+
+			function hasLoadedAthleteDatabase() {
+				const databaseState = hubInstance?.getDatabaseState?.();
+				return Array.isArray(databaseState?.athletes) && databaseState.athletes.length > 0;
+			}
+
+			function requestDocumentLogosOnce(source) {
+				if (hasRequestedStartupLogos || hubInstance?.logosLoaded || !hasLoadedAthleteDatabase()) {
+					return;
+				}
+
+				const requested = requestResources(['logos_zip']);
+				if (!requested) {
+					logger.warn(`[WebSocket] Unable to request logos_zip after ${source} database load`);
+					return;
+				}
+
+				hasRequestedStartupLogos = true;
+				logger.info(`[WebSocket] Requested logos_zip after ${source} database load for document plugins`);
+			}
 
 				// Helper to reset hub state only on the first connection after server start
 				async function flushAndResetOnce() {
@@ -369,6 +389,9 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 						await flushAndResetOnce();
 					}
 					await handleBinaryMessage(data, hubInstance);
+					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
+						requestDocumentLogosOnce('binary');
+					}
 					return;
 				} catch (binaryError) {
 					logger.error('[WebSocket] ERROR: Unable to process binary message:', binaryError.message);
@@ -467,6 +490,10 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					default:
 						result = await handleGenericMessage(message.payload, hasBundledDatabase, message.type);
 				}
+
+					if (message.type === 'database' || hasBundledDatabase) {
+						requestDocumentLogosOnce(hasBundledDatabase ? 'embedded' : 'text');
+					}
 
 				ws.send(JSON.stringify(result));
 			} catch (error) {
