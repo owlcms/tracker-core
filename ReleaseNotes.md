@@ -1,7 +1,9 @@
 Release Notes
 
 ## Version 1.5
-- 1.5.1: Allow using 2025 age fact
+- 1.5.2: Request document logos again after a WebSocket database refresh
+- 1.5.1: Added 2028 Sinclair coefficients and year-aware Sinclair/Masters scoring helpers
+- 1.5.1: Allow using 2025 masters age factors
 - 1.5.0: Process owlcms values for timer warning delays
 
 ## Version 1.4
