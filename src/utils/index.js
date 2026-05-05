@@ -33,6 +33,9 @@ export { formatCategoryDisplay, sortRecordsList, sortRecordsByFederation } from 
 // Message formatting
 export { formatMessage } from './message-format.js';
 
+// Country code lookup helpers
+export { getCountryCodeMap, invalidateCountryCodeMapCache, lookupIocCode, lookupFlagCode, getCountryForIocCode, getCountryForIsoCode, getSubdivisionForCode } from './country-code-map.js';
+
 // Parsing utilities
 export { parseFormattedNumber } from './parsing-utils.js';
 

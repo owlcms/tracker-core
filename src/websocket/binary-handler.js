@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { isVersionAcceptable, parseVersion } from '../protocol/protocol-config.js';
+import { invalidateCountryCodeMapCache } from '../utils/country-code-map.js';
 import { logger } from '../utils/logger.js';
 import { captureBinaryMessage, captureMessage, LEARNING_MODE } from '../utils/learning-mode.js';
 
@@ -285,18 +286,28 @@ export async function handleBinaryMessage(buffer, hub) {
 async function handleFlagsMessage(zipBuffer, hub) {
 	const startTime = Date.now();
 	let extractedCount = 0;
+	let mappingsCount = 0;
 
 	try {
 		// Parse ZIP from buffer
 		const zip = new AdmZip(zipBuffer);
 		const flagsDir = resolveLocalDir('flags', hub);
+		const mappingsDir = resolveLocalDir('mappings', hub);
+		const zipEntries = zip.getEntries();
+		const hasMappingsEntries = zipEntries.some((entry) => !entry.isDirectory && entry.entryName.startsWith('mappings/'));
 		resetDirectory(flagsDir);
+		if (hasMappingsEntries) {
+			resetDirectory(mappingsDir);
+		}
 
 		// Extract all files from ZIP
 		const flagFileNames = [];
-		zip.getEntries().forEach((entry) => {
+		zipEntries.forEach((entry) => {
 			if (!entry.isDirectory) {
-				const targetPath = path.join(flagsDir, entry.entryName);
+				const isMappingsEntry = entry.entryName.startsWith('mappings/');
+				const targetPath = isMappingsEntry
+					? path.join(mappingsDir, entry.entryName.slice('mappings/'.length))
+					: path.join(flagsDir, entry.entryName);
 				const parentDir = path.dirname(targetPath);
 
 				// Create parent directory if needed
@@ -306,15 +317,23 @@ async function handleFlagsMessage(zipBuffer, hub) {
 
 				// Write file
 				fs.writeFileSync(targetPath, entry.getData());
-				extractedCount++;
+				if (isMappingsEntry) {
+					mappingsCount++;
+				} else {
+					extractedCount++;
 
-				// Track all flag file names for logging
-				flagFileNames.push(entry.entryName);
+					// Track all flag file names for logging
+					flagFileNames.push(entry.entryName);
+				}
 			}
 		});
 
+		if (hasMappingsEntries) {
+			invalidateCountryCodeMapCache();
+		}
+
 		const elapsed = Date.now() - startTime;
-		logger.log(`[FLAGS] ✅ Extracted ${extractedCount} flag files in ${elapsed}ms`);
+		logger.log(`[FLAGS] ✅ Extracted ${extractedCount} flag files${mappingsCount ? ` and ${mappingsCount} mapping files` : ''} in ${elapsed}ms`);
 		
 		// Log all extracted flags for verification
 		if (flagFileNames.length > 0) {
@@ -333,6 +352,7 @@ async function handleFlagsMessage(zipBuffer, hub) {
 		// Capture binary sample in learning mode
 		captureBinaryMessage('flags_zip', zipBuffer, {
 			extractedCount,
+			mappingsCount,
 			flagFileNames
 		});
 

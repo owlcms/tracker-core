@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { competitionHub } from '../index.js';
+import { lookupFlagCode } from './country-code-map.js';
 import { logger } from './logger.js';
 
 const FLAG_EXTENSIONS = ['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'];
@@ -34,37 +35,61 @@ function getAssetConfig() {
  * @param {string} baseDir - Directory to search in (default: FLAGS_DIR)
  * @returns {string|null} Relative path to file (e.g., "local/flags/USA.svg") or null
  */
-function resolveFilePath(name, baseDir, urlPrefix) {
-  if (!name || typeof name !== 'string') return null;
-
-  const trimmedName = name.trim();
-  if (!trimmedName) return null;
-
-  // Try exact case first
-  for (const ext of FLAG_EXTENSIONS) {
-    const fileName = `${trimmedName}${ext}`;
-    const fullPath = path.join(baseDir, fileName);
-    try {
-      if (fs.existsSync(fullPath)) return `${urlPrefix}/${fileName}`;
-    } catch (e) { continue; }
-  }
-
-  // Try uppercase
-  const upperName = trimmedName.toUpperCase();
-  for (const ext of FLAG_EXTENSIONS) {
-    const fileName = `${upperName}${ext}`;
-    const fullPath = path.join(baseDir, fileName);
-    try {
-      if (fs.existsSync(fullPath)) return `${urlPrefix}/${fileName}`;
-    } catch (e) { continue; }
+function resolveCandidateFilePath(candidateNames, baseDir, urlPrefix) {
+  for (const candidateName of candidateNames) {
+    for (const ext of FLAG_EXTENSIONS) {
+      const fileName = `${candidateName}${ext}`;
+      const fullPath = path.join(baseDir, fileName);
+      try {
+        if (fs.existsSync(fullPath)) return `${urlPrefix}/${fileName}`;
+      } catch (e) {
+        continue;
+      }
+    }
   }
 
   return null;
 }
 
+function buildFileNameCandidates(name) {
+  if (!name || typeof name !== 'string') return [];
+
+  const trimmedName = name.trim();
+  if (!trimmedName) return [];
+
+  const candidates = [];
+  const seen = new Set();
+
+  function addCandidate(candidateName) {
+    if (!candidateName || typeof candidateName !== 'string') return;
+    const trimmedCandidate = candidateName.trim();
+    if (!trimmedCandidate || seen.has(trimmedCandidate)) return;
+    seen.add(trimmedCandidate);
+    candidates.push(trimmedCandidate);
+  }
+
+  addCandidate(trimmedName);
+  addCandidate(trimmedName.toUpperCase());
+  return candidates;
+}
+
+function resolveFilePath(name, baseDir, urlPrefix) {
+  return resolveCandidateFilePath(buildFileNameCandidates(name), baseDir, urlPrefix);
+}
+
+function resolveFlagFilePath(name, baseDir, urlPrefix) {
+  const candidates = buildFileNameCandidates(name);
+  const flagCode = lookupFlagCode(name);
+  if (flagCode) {
+    candidates.push(flagCode);
+  }
+
+  return resolveCandidateFilePath(candidates, baseDir, urlPrefix);
+}
+
 export function getFlagUrl({ teamName } = {}) {
   const { flagsDir, flagsPrefix } = getAssetConfig();
-  const relativePath = resolveFilePath(teamName, flagsDir, flagsPrefix.replace(/^\//, ''));
+  const relativePath = resolveFlagFilePath(teamName, flagsDir, flagsPrefix.replace(/^\//, ''));
   return relativePath ? (relativePath.startsWith('/') ? relativePath : `/${relativePath}`) : null;
 }
 
@@ -142,5 +167,5 @@ export function getHeaderLogoUrl({ baseNames } = {}) {
 // Backward compatibility aliases (if needed by internal calls)
 export function getFlagPath({ teamName } = {}) {
   const { flagsDir, flagsPrefix } = getAssetConfig();
-  return resolveFilePath(teamName, flagsDir, flagsPrefix.replace(/^\//, ''));
+  return resolveFlagFilePath(teamName, flagsDir, flagsPrefix.replace(/^\//, ''));
 }

@@ -106,7 +106,7 @@ export function requestResources(resources) {
 async function purgeLocalAssetDirs(hub) {
 	try {
 		const baseDir = hub?.getLocalFilesDir?.() || path.join(process.cwd(), 'local');
-		const targets = ['flags', 'logos', 'pictures', 'styles'];
+		const targets = ['flags', 'logos', 'pictures', 'styles', 'mappings'];
 		for (const dir of targets) {
 			const fullPath = path.join(baseDir, dir);
 			try {
