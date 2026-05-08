@@ -381,7 +381,14 @@ export class CompetitionHub extends EventEmitter {
           down: decision.down,
           isSingleReferee: decision.isSingleReferee,
           athleteName: normalizedParams.fullName || null,
-          attemptNumber: normalizedParams.attemptNumber || null
+          attemptNumber: normalizedParams.attemptNumber || null,
+          juryDecision: normalizedParams.juryDecision || null,
+          juryReversal: normalizedParams.juryReversal || null,
+          waitForAnnouncer: normalizedParams.waitForAnnouncer || null,
+          recordKind: normalizedParams.recordKind || null,
+          actualLift: normalizedParams.actualLift || null,
+          athleteFull: normalizedParams.athleteFull || null,
+          athleteAbbreviated: normalizedParams.athleteAbbreviated || null
         };
         this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
         this.emit('decision', { fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
