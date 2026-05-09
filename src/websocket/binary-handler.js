@@ -32,7 +32,14 @@ function resolveLocalDir(subdir, hub) {
 
 function resetDirectory(dir) {
  	if (fs.existsSync(dir)) {
- 		fs.rmSync(dir, { recursive: true, force: true });
+ 		try {
+ 			fs.rmSync(dir, { recursive: true, force: true });
+ 		} catch (rmErr) {
+ 			// On Windows, rmSync with recursive can fail with UNKNOWN if files are locked
+ 			// or memory is constrained. Log and continue — mkdirSync below will still work
+ 			// as long as the directory exists or can be recreated.
+ 			logger.warn(`[Binary] Could not fully clear directory ${dir}: ${rmErr.message}`);
+ 		}
  	}
 
  	fs.mkdirSync(dir, { recursive: true });
