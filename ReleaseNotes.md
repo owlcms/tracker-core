@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.5
+- 1.5.4: additional state in the hub to track jury deliberations and challenges
 - 1.5.3: retrieve IOC code-to-Country name forward and reverse maps used for flag name normalization
 - 1.5.2: Request document logos again after a WebSocket database refresh
 - 1.5.1: Added 2028 Sinclair coefficients and year-aware Sinclair/Masters scoring helpers
