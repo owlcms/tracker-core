@@ -25,7 +25,11 @@ export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAn
 export { computeAttemptBarVisibility, hasCurrentAthlete, logAttemptBarDebug } from './attempt-bar-visibility.js';
 
 // Records extraction
-export { extractRecordsFromUpdate } from './records-extractor.js';
+export {
+	extractRecordsFromUpdate,
+	getCurrentCompetitionName,
+	isCurrentCompetitionProvisionalRecord
+} from './records-extractor.js';
 
 // Records display and sorting
 export { formatCategoryDisplay, sortRecordsList, sortRecordsByFederation } from './records-display.js';
