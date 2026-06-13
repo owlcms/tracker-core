@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.5
+- 1.5.7: processing of immediate decisions re: hiding the down signal
 - 1.5.5: defensive check when recursing directories
 - 1.5.4: additional state in the hub to track jury deliberations and challenges
 - 1.5.3: retrieve IOC code-to-Country name forward and reverse maps used for flag name normalization

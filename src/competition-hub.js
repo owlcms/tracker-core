@@ -1550,6 +1550,15 @@ export class CompetitionHub extends EventEmitter {
     }
 
     const sanitized = { ...params };
+
+    // Normalize decisionEventType to canonical UPPER_SNAKE form. OWLCMS special-cases
+    // INITIAL_DECISION as the camelCase string 'initialDecision' over the HTTP forwarder
+    // (all other events use the enum .toString()). Canonicalize it here so the rest of
+    // the code only ever sees 'INITIAL_DECISION'.
+    if (sanitized.decisionEventType === 'initialDecision') {
+      sanitized.decisionEventType = 'INITIAL_DECISION';
+    }
+
     // Only parse the V2-shaped JSON fields. Legacy names removed - V2 is canonical.
     const jsonFields = [
       'sessionAthletes',

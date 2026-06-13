@@ -213,9 +213,20 @@ export function extractDecisionState(fopUpdate) {
 		};
 	}
 
+	// OWLCMS sends an intermediate INITIAL_DECISION (down=false, decisionsVisible=false)
+	// between the down signal and the FULL_DECISION. During this phase the referees have
+	// decided but the lights are intentionally not revealed yet (delayed reveal). The down
+	// signal must keep showing until the full decision, otherwise the athlete clock pops
+	// back in between.
+	// decisionEventType is normalized to canonical UPPER_SNAKE in the hub
+	// (_sanitizeInboundPayload), so OWLCMS's camelCase 'initialDecision' arrives here as
+	// 'INITIAL_DECISION'.
+	const isInitialDecision = fopUpdate?.decisionEventType === 'INITIAL_DECISION';
+
 	const isVisible = fopUpdate?.decisionsVisible === 'true' ||
 					  fopUpdate?.decisionEventType === 'FULL_DECISION' ||
-					  fopUpdate?.down === 'true';
+					  fopUpdate?.down === 'true' ||
+					  isInitialDecision;
 	const isSingleReferee = fopUpdate?.singleReferee === 'true' || fopUpdate?.singleReferee === true;
 
 	const mapDecision = (value) => {
@@ -224,7 +235,10 @@ export function extractDecisionState(fopUpdate) {
 		return null;
 	};
 
-	const isDownOnly = fopUpdate?.down === 'true' && fopUpdate?.decisionEventType !== 'FULL_DECISION';
+	// Keep the lights masked (show the down signal) for a bare down signal and for the
+	// INITIAL_DECISION in-progress phase; only the FULL_DECISION reveals the ref lights.
+	const isDownOnly = (fopUpdate?.down === 'true' || isInitialDecision)
+					  && fopUpdate?.decisionEventType !== 'FULL_DECISION';
 
 	return {
 		visible: Boolean(isVisible),
@@ -233,7 +247,7 @@ export function extractDecisionState(fopUpdate) {
 		ref1: isDownOnly ? null : mapDecision(fopUpdate?.d1),
 		ref2: isDownOnly ? null : mapDecision(fopUpdate?.d2),
 		ref3: isDownOnly ? null : mapDecision(fopUpdate?.d3),
-		down: fopUpdate?.down === 'true'
+		down: fopUpdate?.down === 'true' || isInitialDecision
 	};
 }
 
