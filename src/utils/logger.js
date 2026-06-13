@@ -13,7 +13,28 @@ const baseConsole = {
   log: console.log ? console.log.bind(console) : () => {}
 };
 
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+  trace: 4
+};
+
+function normalizeLevelName(level) {
+  const normalized = (level || '').toString().trim().toLowerCase();
+  if (normalized === 'warning') return 'warn';
+  if (normalized === 'log') return 'info';
+  return Object.prototype.hasOwnProperty.call(LOG_LEVELS, normalized) ? normalized : null;
+}
+
+function resolveInitialLogLevel() {
+  const envLevel = typeof process !== 'undefined' ? process.env.LOG_LEVEL : undefined;
+  return normalizeLevelName(envLevel) || 'info';
+}
+
 let currentLogger = normalizeLogger(baseConsole);
+let currentLogLevel = resolveInitialLogLevel();
 
 function normalizeLogger(logger) {
   if (!logger || typeof logger !== 'object') return baseConsole;
@@ -35,28 +56,51 @@ export function getLogger() {
   return currentLogger;
 }
 
+export function setLogLevel(level) {
+  currentLogLevel = normalizeLevelName(level) || 'info';
+}
+
+export function getLogLevel() {
+  return currentLogLevel;
+}
+
+function shouldLog(level) {
+  const normalizedLevel = normalizeLevelName(level) || 'info';
+  return LOG_LEVELS[normalizedLevel] <= LOG_LEVELS[currentLogLevel];
+}
+
 function getTimestamp() {
   const now = new Date();
   return now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
 }
 
 export const logger = {
-  error: (...args) => currentLogger.error(`[${getTimestamp()}]`, ...args),
-  warn: (...args) => currentLogger.warn(`[${getTimestamp()}]`, ...args),
-  info: (...args) => currentLogger.info(`[${getTimestamp()}]`, ...args),
-  debug: (...args) => currentLogger.debug(`[${getTimestamp()}]`, ...args),
-  trace: (...args) => currentLogger.trace(`[${getTimestamp()}]`, ...args),
+  error: (...args) => {
+    if (shouldLog('error')) currentLogger.error(`[${getTimestamp()}]`, ...args);
+  },
+  warn: (...args) => {
+    if (shouldLog('warn')) currentLogger.warn(`[${getTimestamp()}]`, ...args);
+  },
+  info: (...args) => {
+    if (shouldLog('info')) currentLogger.info(`[${getTimestamp()}]`, ...args);
+  },
+  debug: (...args) => {
+    if (shouldLog('debug')) currentLogger.debug(`[${getTimestamp()}]`, ...args);
+  },
+  trace: (...args) => {
+    if (shouldLog('trace')) currentLogger.trace(`[${getTimestamp()}]`, ...args);
+  },
   log: (levelOrMessage, ...args) => {
-    const lvl = (levelOrMessage || '').toString().toLowerCase();
+    const lvl = normalizeLevelName(levelOrMessage);
     const ts = `[${getTimestamp()}]`;
     
     // Check if the first argument is a known log level
-    if (['error', 'warn', 'warning', 'debug', 'trace', 'info'].includes(lvl)) {
+    if (lvl) {
+      if (!shouldLog(lvl)) return;
       switch (lvl) {
         case 'error':
           return currentLogger.error(ts, ...args);
         case 'warn':
-        case 'warning':
           return currentLogger.warn(ts, ...args);
         case 'debug':
           return currentLogger.debug(ts, ...args);
@@ -69,6 +113,7 @@ export const logger = {
     
     // If not a level, treat as a message and log with default level (info/log)
     // We pass levelOrMessage as the first message argument
+    if (!shouldLog('info')) return;
     return currentLogger.log(ts, levelOrMessage, ...args);
   }
 };

@@ -35,6 +35,70 @@ function deriveLegacyAthleteWarningThresholds(duration) {
   return { athleteInitialWarningMillis: null, athleteFinalWarningMillis: null };
 }
 
+function buildBroadcastDebounceKey(message) {
+  const fopName = message.fop || 'global';
+
+  if (message.type === 'timer') {
+    const timer = message.timer || {};
+    const signature = [
+      'timer',
+      message.displayMode || '',
+      timer.state || '',
+      timer.breakState || '',
+      timer.timeRemaining ?? '',
+      timer.breakRemaining ?? ''
+    ].join(':');
+    return { fopName, eventType: signature, debounceKey: `${fopName}-${signature}` };
+  }
+
+  if (message.type === 'decision') {
+    const decision = message.decision || {};
+    const signature = [
+      'decision',
+      message.displayMode || '',
+      decision.type || '',
+      decision.visible ? '1' : '0',
+      decision.down ? '1' : '0',
+      decision.ref1 || '',
+      decision.ref2 || '',
+      decision.ref3 || '',
+      decision.juryDecision || '',
+      decision.juryReversal || ''
+    ].join(':');
+    return { fopName, eventType: signature, debounceKey: `${fopName}-${signature}` };
+  }
+
+  const eventType = message.data?.uiEvent
+    || message.data?.decisionEventType
+    || message.data?.athleteTimerEventType
+    || message.data?.breakTimerEventType
+    || message.type
+    || 'unknown';
+
+  return { fopName, eventType, debounceKey: `${fopName}-${eventType}` };
+}
+
+function shouldDebounceBroadcast(message) {
+  if (message.type === 'decision') {
+    return false;
+  }
+
+  if (message.data?.decisionEventType) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldLogCompetitionUpdate(params = {}) {
+  return [
+    'LiftingOrderUpdated',
+    'StartLifting',
+    'SwitchGroup',
+    'GroupDone'
+  ].includes(params.uiEvent);
+}
+
 export class CompetitionHub extends EventEmitter {
   constructor() {
     super();
@@ -269,7 +333,7 @@ export class CompetitionHub extends EventEmitter {
       // Debug: Check currentAthleteKey in incoming update
       const oldKey = existingState.currentAthleteKey;
       const newKey = normalizedParams.currentAthleteKey;
-      logger.log(`[Hub] currentAthleteKey transition for FOP ${fopName}: ${oldKey} -> ${newKey} (exists in update: ${normalizedParams.hasOwnProperty('currentAthleteKey')})`);
+      logger.debug(`[Hub] currentAthleteKey transition for FOP ${fopName}: ${oldKey} -> ${newKey} (exists in update: ${normalizedParams.hasOwnProperty('currentAthleteKey')})`);
       
       // Build merged state based on message type
       // For UPDATE messages: use new data as base, only preserve timer/decision state if not in this message
@@ -347,6 +411,9 @@ export class CompetitionHub extends EventEmitter {
         const { timer: athleteTimer, breakTimer } = extractTimers(mergedState);
         const decision = extractDecisionState(mergedState);
         const { displayMode } = computeDisplayMode(athleteTimer, breakTimer, decision);
+        const timerEventType = normalizedParams.athleteTimerEventType
+          || normalizedParams.breakTimerEventType
+          || 'timer';
         
         const timerPayload = {
           state: athleteTimer.state,
@@ -360,7 +427,8 @@ export class CompetitionHub extends EventEmitter {
           breakRemaining: breakTimer.timeRemaining,
           breakVisible: breakTimer.visible
         };
-        logger.log(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
+        logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
+        logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
         this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
         this.emit('timer', { fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
       }
@@ -370,6 +438,7 @@ export class CompetitionHub extends EventEmitter {
         const { timer: athleteTimer, breakTimer } = extractTimers(mergedState);
         const decision = extractDecisionState(mergedState);
         const { displayMode } = computeDisplayMode(athleteTimer, breakTimer, decision);
+        const decisionEventType = normalizedParams.decisionEventType || 'decision';
         
         // Use extracted decision state (has ref1/ref2/ref3 mapped to 'good'/'bad'/null)
         const decisionPayload = {
@@ -390,11 +459,15 @@ export class CompetitionHub extends EventEmitter {
           athleteFull: normalizedParams.athleteFull || null,
           athleteAbbreviated: normalizedParams.athleteAbbreviated || null
         };
+        logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
         this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
         this.emit('decision', { fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
       }
       // Regular updates broadcast fop_update with full data
       else {
+        if (shouldLogCompetitionUpdate(normalizedParams)) {
+          logger.info(`[Hub] Update ${fopName}: ${normalizedParams.uiEvent}`);
+        }
         this.broadcast({
           type: 'fop_update',
           fop: fopName,
@@ -437,7 +510,7 @@ export class CompetitionHub extends EventEmitter {
         || normalizedParams.athleteTimerEventType 
         || normalizedParams.breakTimerEventType 
         || 'unknown';
-      logger.log(`[Hub] Update processed: ${eventType} for FOP ${fopName}`);
+      logger.debug(`[Hub] Update processed: ${eventType} for FOP ${fopName}`);
       return { accepted: true };
 
     } catch (error) {
@@ -788,28 +861,27 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
-   * Broadcast message to all subscribers (with debouncing per FOP and event type)
+   * Broadcast message to all subscribers (with selective debouncing per FOP and event type)
    */
   broadcast(message) {
-    // Debounce only identical event types for same FOP
-    // Example: stop-stop can be debounced, but stop-start-stop should all go through
-    const fopName = message.fop || 'global';
-    // IMPORTANT: Check uiEvent FIRST - UPDATE messages have both uiEvent and athleteTimerEventType,
-    // and we want to debounce based on the primary event type (uiEvent for updates)
-    const eventType = message.data?.uiEvent || message.data?.athleteTimerEventType || message.type || 'unknown';
-    const debounceKey = `${fopName}-${eventType}`;
-    
+    // Debounce only identical low-value bursts for the same FOP.
+    // Decision messages are sparse and semantically important, so they always go through.
+    const { fopName, eventType, debounceKey } = buildBroadcastDebounceKey(message);
     const now = Date.now();
-    const lastBroadcast = this.lastBroadcastTime[debounceKey] || 0;
-    const timeSinceLastBroadcast = now - lastBroadcast;
-    
-    // Skip broadcast if same event type for same FOP occurred too recently
-    if (timeSinceLastBroadcast < this.broadcastDebounceMs) {
-      logger.log(`[Hub] Debouncing ${eventType} for ${fopName} (${timeSinceLastBroadcast}ms since last)`);
-      return;
+
+    if (shouldDebounceBroadcast(message)) {
+      const lastBroadcast = this.lastBroadcastTime[debounceKey] || 0;
+      const timeSinceLastBroadcast = now - lastBroadcast;
+
+      // Skip broadcast if same event type for same FOP occurred too recently
+      if (timeSinceLastBroadcast < this.broadcastDebounceMs) {
+        logger.debug(`[Hub] Debouncing ${eventType} for ${fopName} (${timeSinceLastBroadcast}ms since last)`);
+        return;
+      }
+
+      this.lastBroadcastTime[debounceKey] = now;
     }
-    
-    this.lastBroadcastTime[debounceKey] = now;
+
     this.metrics.messagesBroadcast++;
     
     for (const callback of this.subscribers) {
@@ -2008,7 +2080,7 @@ export class CompetitionHub extends EventEmitter {
       return;
     }
     if (!this.databaseAthleteIndex || this.databaseAthleteIndex.size === 0) {
-      logger.log(`[Hub DEBUG] No database athletes indexed yet`);
+      logger.debug(`[Hub DEBUG] No database athletes indexed yet`);
       return;
     }
 
@@ -2038,12 +2110,12 @@ export class CompetitionHub extends EventEmitter {
     }
 
     if (unmatched > 0) {
-      logger.log(`[Hub DEBUG] Session→Database key matching for FOP ${fopName}: ${matched} matched, ${unmatched} UNMATCHED`);
-      logger.log(`[Hub DEBUG] Unmatched athletes:`, unmatchedKeys.slice(0, 5).map(u => `${u.name} (key=${u.key})`).join(', '));
-      logger.log(`[Hub DEBUG] Database has ${this.databaseAthleteIndex.size} athletes indexed. Sample keys:`, 
+      logger.debug(`[Hub DEBUG] Session→Database key matching for FOP ${fopName}: ${matched} matched, ${unmatched} UNMATCHED`);
+      logger.debug(`[Hub DEBUG] Unmatched athletes:`, unmatchedKeys.slice(0, 5).map(u => `${u.name} (key=${u.key})`).join(', '));
+      logger.debug(`[Hub DEBUG] Database has ${this.databaseAthleteIndex.size} athletes indexed. Sample keys:`, 
         Array.from(this.databaseAthleteIndex.keys()).slice(0, 5));
     } else if (matched > 0) {
-      logger.log(`[Hub DEBUG] ✓ All ${matched} session athletes match database by key`);
+      logger.debug(`[Hub DEBUG] ✓ All ${matched} session athletes match database by key`);
     }
   }
 

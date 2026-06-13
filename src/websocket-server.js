@@ -431,7 +431,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					}));
 					return;
 				}
-				logger.info(`[WebSocket] ✅ Protocol version validated: ${versionCheck.version}`);
+				logger.debug(`[WebSocket] ✅ Protocol version validated: ${versionCheck.version}`);
 				try {
 					hubInstance?.clearProtocolError?.();
 				} catch (e) {
@@ -658,7 +658,6 @@ async function handleDatabaseMessage(payload) {
  */
 async function handleUpdateMessage(payload, hasBundledDatabase = false) {
 	const uiEvent = payload.uiEvent || '';
-	const isDatabaseComing = uiEvent === 'SwitchGroup' || uiEvent === 'GroupDone';
 
 	const result = hubInstance.handleOwlcmsMessage(payload, 'update');
 	const missing = hubInstance.getMissingPreconditions();
@@ -674,12 +673,8 @@ async function handleUpdateMessage(payload, hasBundledDatabase = false) {
 		};
 	}
 
-	if (isDatabaseComing) {
-		if (hasBundledDatabase) {
-			logger.info(`[WebSocket] Update received (${uiEvent}) with embedded database payload`);
-		} else {
-			logger.info(`[WebSocket] Update received (${uiEvent}) - database message expected to follow`);
-		}
+	if (hasBundledDatabase) {
+		logger.info(`[WebSocket] Update received (${uiEvent || 'update'}) with embedded database payload`);
 	}
 
 	return mapHubResultToResponse(result, 'update');
