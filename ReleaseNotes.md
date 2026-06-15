@@ -1,6 +1,8 @@
 Release Notes
 
 ## Version 1.5
+- 1.5.9: systematic checking of the authentication token, esp. in binary frames
+- 1.5.8: logging cleanup
 - 1.5.7: processing of immediate decisions re: hiding the down signal
 - 1.5.5: defensive check when recursing directories
 - 1.5.4: additional state in the hub to track jury deliberations and challenges
