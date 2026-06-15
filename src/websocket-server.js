@@ -15,6 +15,47 @@ import { extractEmbeddedDatabase } from './protocol/embedded-database.js';
 import { handleBinaryMessage } from './websocket/binary-handler.js';
 import { extractAndValidateVersion } from './protocol/protocol-config.js';
 
+// Marker placed at the very end of a keyed binary frame by OWLCMS so we can detect
+// the optional key trailer: [payload][key bytes][4-byte key length][magic marker].
+// Must match KEY_TRAILER_MAGIC in WebSocketEventSender.java.
+const BINARY_KEY_TRAILER_MAGIC = Buffer.from([0xA5, 0x4B, 0x45, 0x59]);
+
+/**
+ * Detect and strip the optional key trailer appended after a binary payload.
+ * Returns the clean payload (with the trailer removed) and the extracted key,
+ * or the original buffer and a null key when no trailer is present (legacy /
+ * unauthenticated senders).
+ *
+ * @param {Buffer} buf raw binary frame data
+ * @returns {{ payload: Buffer, key: string|null }}
+ */
+function parseBinaryKeyTrailer(buf) {
+	if (!Buffer.isBuffer(buf) || buf.length < BINARY_KEY_TRAILER_MAGIC.length + 4) {
+		return { payload: buf, key: null };
+	}
+	const magicStart = buf.length - BINARY_KEY_TRAILER_MAGIC.length;
+	if (!buf.subarray(magicStart).equals(BINARY_KEY_TRAILER_MAGIC)) {
+		return { payload: buf, key: null };
+	}
+	const keyLenPos = magicStart - 4;
+	if (keyLenPos < 0) {
+		return { payload: buf, key: null };
+	}
+	const keyLen = buf.readUInt32BE(keyLenPos);
+	const keyStart = keyLenPos - keyLen;
+	if (keyStart < 0) {
+		return { payload: buf, key: null };
+	}
+	const key = buf.subarray(keyStart, keyStart + keyLen).toString('utf8');
+	const payload = buf.subarray(0, keyStart);
+	return { payload, key };
+}
+
+function configuredUpdateKey() {
+	const key = process.env.OWLCMS_UPDATEKEY;
+	return key == null || key.trim() === '' ? null : key;
+}
+
 let wss = null;
 let activeConnection = null; // Track active WebSocket connection for sending messages
 let hubInstance = null; // Injected hub instance from attach/inject mode
@@ -264,6 +305,9 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 	}
 	
 	wss = new WebSocketServer({ noServer: true });
+	if (!configuredUpdateKey()) {
+		logger.warn('[WebSocket] OWLCMS_UPDATEKEY is not configured; running without WebSocket authentication');
+	}
 	
 	// Inject requestResources callback into hub so it can request resources without circular import
 	if (hubInstance && typeof hubInstance.setRequestResourcesCallback === 'function') {
@@ -282,8 +326,32 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			}
 			activeConnection = ws; // Store active connection for sending resource requests
 
-			// Track authentication status for this connection
-			let clientAuthenticated = !process.env.OWLCMS_UPDATEKEY;
+			const expectedUpdateKey = configuredUpdateKey();
+			const remoteAddress = ws?._socket?.remoteAddress || 'unknown remote';
+			if (expectedUpdateKey) {
+				logger.warn(`[WebSocket] OWLCMS authentication required for ${remoteAddress}`);
+			}
+
+			function checkFrameUpdateKey({ frameType, keyLabel, incomingKey }) {
+				if (!expectedUpdateKey) {
+					return true;
+				}
+				return incomingKey != null && String(incomingKey) === String(expectedUpdateKey);
+			}
+
+			function keyEdges(key) {
+				if (key == null) {
+					return '(none)';
+				}
+				const s = String(key);
+				if (s.length === 0) {
+					return '(empty)';
+				}
+				if (s.length === 1) {
+					return `${s[0]}\u2026 (len 1)`;
+				}
+				return `${s[0]}\u2026${s[s.length - 1]} (len ${s.length})`;
+			}
 
 			// Per-connection state: preload document logos once after the first real database load.
 			let hasRequestedStartupLogos = false;
@@ -344,18 +412,26 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			// Strictly follow OWLCMS spec:
 			// - If isBinary is true, frame is binary with [4-byte length][type][payload]
 			// - If isBinary is false, frame is JSON text
-			
-			// Check authentication for ALL frames (text and binary)
-			// If OWLCMS_UPDATEKEY is configured, only accept frames from authenticated clients
-			if (process.env.OWLCMS_UPDATEKEY && !clientAuthenticated) {
-				// For text frames, we'll check the key below
-				// For binary frames, reject because we can't verify the key
-				if (isBinary) {
-					logger.warn('[WebSocket] ⚠️ Binary frame rejected - client not authenticated (missing updateKey from previous text frame)');
-					ws.send(JSON.stringify({ status: 401, message: 'Not authenticated. Send text frame with valid updateKey first' }));
-					ws.close(1008, 'Unauthorized: binary frame requires prior authentication');
-					return;
-				}
+
+			// Binary frames may carry an optional key trailer after the payload. Extract it
+			// up front so the key can authenticate the connection and the clean payload can
+			// be forwarded to the binary handler.
+			let binaryPayload = data;
+			let binaryKey = null;
+			if (isBinary) {
+				const parsed = parseBinaryKeyTrailer(data);
+				binaryPayload = parsed.payload;
+				binaryKey = parsed.key;
+			}
+
+			// Check authentication for every binary frame before peeking at type or
+			// processing any payload. Text frames are checked below immediately after
+			// parsing the envelope, before capture/version validation/payload handlers.
+			if (isBinary && !checkFrameUpdateKey({ frameType: 'binary', keyLabel: 'trailerKey', incomingKey: binaryKey })) {
+				logger.warn(`[WebSocket] Binary frame ignored for ${remoteAddress} - missing/invalid updateKey trailer (received key ${keyEdges(binaryKey)})`);
+				ws.send(JSON.stringify({ status: 401, message: 'Not authenticated. Binary frame requires a valid updateKey' }));
+				ws.close(1008, 'Unauthorized: binary frame requires a valid updateKey');
+				return;
 			}
 			
 			if (isBinary) {
@@ -367,28 +443,28 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					// Detect if this is a database_zip or database binary and flush/reset only on first connection
 					let typeString = null;
 					try {
-						if (data.length >= 8) {
-							const firstLength = data.readUInt32BE(0);
+						if (binaryPayload.length >= 8) {
+							const firstLength = binaryPayload.readUInt32BE(0);
 							let offset = 4 + firstLength;
-							if (data.length >= offset + 4) {
-								const typeLength = data.readUInt32BE(offset);
+							if (binaryPayload.length >= offset + 4) {
+								const typeLength = binaryPayload.readUInt32BE(offset);
 								offset += 4;
-								if (data.length >= offset + typeLength) {
-									typeString = data.slice(offset, offset + typeLength).toString('utf8');
+								if (binaryPayload.length >= offset + typeLength) {
+									typeString = binaryPayload.slice(offset, offset + typeLength).toString('utf8');
 								}
 							}
 						}
-						if (!typeString && data.length >= 4) {
-							const typeLength = data.readUInt32BE(0);
-							if (data.length >= 4 + typeLength) {
-								typeString = data.slice(4, 4 + typeLength).toString('utf8');
+						if (!typeString && binaryPayload.length >= 4) {
+							const typeLength = binaryPayload.readUInt32BE(0);
+							if (binaryPayload.length >= 4 + typeLength) {
+								typeString = binaryPayload.slice(4, 4 + typeLength).toString('utf8');
 							}
 						}
 					} catch (peekErr) {}
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
 						await flushAndResetOnce();
 					}
-					await handleBinaryMessage(data, hubInstance);
+					await handleBinaryMessage(binaryPayload, hubInstance);
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
 						requestDocumentLogosOnce('binary');
 					}
@@ -405,6 +481,23 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				const message = JSON.parse(data.toString());
 				const messageType = message.type ? message.type.toUpperCase() : 'OTHER';
 				logger.debug(`[WebSocket] Text frame received, message type: ${messageType}`);
+
+				if (!message.type || !message.payload) {
+					ws.send(JSON.stringify({ error: 'Invalid message format. Expected {version, type, payload}' }));
+					return;
+				}
+
+				// If a shared secret is configured, enforce it on every text frame before
+				// accepting, capturing, validating, or processing the payload.
+				if (expectedUpdateKey) {
+					const incomingKey = message.payload?.updateKey || message.payload?.update_key || message.payload?.updatekey;
+					if (!checkFrameUpdateKey({ frameType: 'text', keyLabel: 'payloadKey', incomingKey })) {
+						logger.warn(`[WebSocket] Text frame ignored for ${remoteAddress} - missing/invalid OWLCMS_UPDATEKEY`);
+						ws.send(JSON.stringify({ status: 401, message: 'Access not authorized' }));
+						ws.close(1008, 'Unauthorized: invalid updateKey');
+						return;
+					}
+				}
 				
 				// Validate protocol version
 				const versionCheck = extractAndValidateVersion(message);
@@ -443,27 +536,6 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					const explicitType = getCaptureLabel(messageType, message.payload);
 					// Do not include a redundant 'WEBSOCKET' token in sample filenames
 					captureMessage(message.payload || message, data.toString(), '', explicitType);
-				}
-				
-				if (!message.type || !message.payload) {
-					ws.send(JSON.stringify({ error: 'Invalid message format. Expected {version, type, payload}' }));
-					return;
-				}
-
-				// If a shared secret is configured, enforce it here. OWLCMS may send
-				// an `updateKey` in the payload; if it does not match the configured
-				// `OWLCMS_UPDATEKEY` environment variable, reject with 401 (unauthorized).
-				const expectedKey = process.env.OWLCMS_UPDATEKEY;
-				if (expectedKey) {
-					const incomingKey = message.payload?.updateKey || message.payload?.update_key || message.payload?.updatekey;
-					if (!incomingKey || String(incomingKey) !== String(expectedKey)) {
-						logger.warn('[WebSocket] ⚠️ Unauthorized update attempt - missing/invalid OWLCMS_UPDATEKEY');
-						ws.send(JSON.stringify({ status: 401, message: 'Access not authorized' }));
-						ws.close(1008, 'Unauthorized: invalid updateKey');
-						return;
-					}
-					// Authentication successful - mark this client as authenticated for binary frames
-					clientAuthenticated = true;
 				}
 				
 				const hasBundledDatabase = Object.prototype.hasOwnProperty.call(message.payload, 'database');

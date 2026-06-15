@@ -404,6 +404,24 @@ Binary frames are sent as **binary WebSocket frames** (not text) and use a lengt
 3. Remaining bytes: ZIP archive binary payload
 4. **Fallback:** If typeLength parsing fails but buffer begins with ZIP magic bytes (`50 4B 03 04`), treat as `flags_zip` (legacy behavior)
 
+### Optional Key Trailer (authentication)
+
+When OWLCMS is configured with an update key, every binary frame carries that key in an optional trailer appended **after** the payload, so the connection can be authenticated from the very first frame (binary or text):
+
+```
+[ ...frame as above... ] [keyLength bytes: UTF-8 key] [4 bytes: keyLength (big-endian)] [4 bytes: magic A5 4B 45 59]
+```
+
+**Trailer detection (read from the end):**
+
+1. If the last 4 bytes equal the magic marker `A5 4B 45 59`, a key trailer is present.
+2. Read the 4 bytes preceding the magic as big-endian `keyLength`.
+3. Read the `keyLength` bytes preceding that as the UTF-8 key.
+4. The payload is everything before the key.
+5. If the magic is absent, there is no trailer and the entire remainder is the payload (legacy / unauthenticated senders).
+
+**Authentication semantics:** When `OWLCMS_UPDATEKEY` is configured, the first frame carrying a matching key (text payload `updateKey` or binary key trailer) authenticates the connection for its lifetime. Binary frames without a valid key are rejected (`1008`) until the connection is authenticated. Senders that do not configure a key omit the trailer entirely and continue to work when no key is required.
+
 **Example Byte Layout (flags_zip):**
 
 ```
