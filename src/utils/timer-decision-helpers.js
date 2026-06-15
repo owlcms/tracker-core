@@ -78,17 +78,29 @@ export function extractTimers(fopUpdate, language = 'en') {
 	                     athleteEvent === 'StopTime' ? 'stopped' : 
 	                     athleteEvent === 'SetTime' ? 'set' : 
 	                     (athleteEvent ? String(athleteEvent).toLowerCase() : 'stopped');
-	
+
+	// For a running timer, compute a live remaining value from the start anchor.
+	// athleteMillisRemaining is the snapshot captured at the StartTime event and is
+	// not decremented server-side, so a client joining mid-attempt (fresh load or
+	// reload after inactivity) would otherwise resume from a stale, too-high value.
+	// Subtracting the elapsed time since athleteStartTimeMillis yields the true remaining.
+	const athleteStartMillis = parseInt(fopUpdate?.athleteStartTimeMillis || 0);
+	let athleteLiveRemaining = athleteTimeRemaining;
+	if (athleteState === 'running' && athleteStartMillis > 0 && athleteTimeRemaining > 0) {
+		const expectedEnd = athleteStartMillis + athleteTimeRemaining;
+		athleteLiveRemaining = Math.max(0, expectedEnd - Date.now());
+	}
+
 	const athleteTimer = {
 		type: 'athlete',
 		state: athleteState,
 		isActive: !isInactive && Boolean(athleteEvent || athleteTimeRemaining > 0),
 		visible: !isInactive && Boolean(athleteEvent || athleteTimeRemaining > 0),
-		timeRemaining: athleteTimeRemaining,
+		timeRemaining: athleteLiveRemaining,
 		duration: athleteDuration,
 		initialWarningMillis,
 		finalWarningMillis,
-		startTime: null
+		startTime: athleteStartMillis || null
 	};
 
 	// Break timer state
