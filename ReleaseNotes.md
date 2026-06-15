@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.5
+- 1.5.10: live remaining time for a running athlete timer, derived from the start timestamp so a fresh load or reload mid-attempt shows the correct clock
 - 1.5.9: systematic checking of the authentication token, esp. in binary frames
 - 1.5.8: logging cleanup
 - 1.5.7: processing of immediate decisions re: hiding the down signal
