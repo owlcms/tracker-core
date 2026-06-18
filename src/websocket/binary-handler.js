@@ -273,6 +273,8 @@ export async function handleBinaryMessage(buffer, hub) {
 			await handleTranslationsZipMessage(payload, hub);
 		} else if (messageType === 'logos_zip') {
 			await handleLogosMessage(payload, hub);
+		} else if (messageType === 'gamx_zip') {
+			await handleGamxMessage(payload, hub);
 		}
 
 		const elapsed = Date.now() - startTime;
@@ -500,6 +502,66 @@ async function handleLogosMessage(zipBuffer, hub) {
 		const elapsed = Date.now() - startTime;
 		logger.error(`[LOGOS] ❌ ERROR after ${elapsed}ms:`, error.message);
 		hub.setLogosReady(false);
+	}
+}
+
+/**
+ * Extract GAMX parameter ZIP archive to <localFilesDir>/gamx
+ * Delivered on demand (428 handshake) only when a plugin declares requires: ['gamx_zip'].
+ * Once extracted, hub.gamxLoaded stays true so it is not re-requested until a flush clears it.
+ * @param {Buffer} zipBuffer - ZIP file buffer containing params-*.json tables
+ */
+async function handleGamxMessage(zipBuffer, hub) {
+	const startTime = Date.now();
+	let extractedCount = 0;
+
+	try {
+		const zip = new AdmZip(zipBuffer);
+		const gamxDir = resolveLocalDir('gamx', hub);
+		resetDirectory(gamxDir);
+
+		// Extract all files from ZIP
+		const gamxFileNames = [];
+		zip.getEntries().forEach((entry) => {
+			if (!entry.isDirectory) {
+				const targetPath = path.join(gamxDir, entry.entryName);
+				const parentDir = path.dirname(targetPath);
+
+				// Create parent directory if needed
+				if (!fs.existsSync(parentDir)) {
+					fs.mkdirSync(parentDir, { recursive: true });
+				}
+
+				fs.writeFileSync(targetPath, entry.getData());
+				extractedCount++;
+
+				if (gamxFileNames.length < 20) {
+					gamxFileNames.push(entry.entryName);
+				}
+			}
+		});
+
+		const elapsed = Date.now() - startTime;
+		logger.log(`[GAMX] ✅ Extracted ${extractedCount} GAMX parameter files in ${elapsed}ms`);
+
+		// Update hub state (gamxLoaded = true prevents re-request until flushed)
+		hub.setGamxReady(true);
+
+		// Emit event for interested listeners
+		hub.emit('gamx_loaded', {
+			count: extractedCount,
+			timestamp: Date.now()
+		});
+
+		// Capture binary sample in learning mode
+		captureBinaryMessage('gamx_zip', zipBuffer, {
+			extractedCount,
+			gamxFileNames
+		});
+	} catch (error) {
+		const elapsed = Date.now() - startTime;
+		logger.error(`[GAMX] ❌ ERROR after ${elapsed}ms:`, error.message);
+		hub.setGamxReady(false);
 	}
 }
 /**

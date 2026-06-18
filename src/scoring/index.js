@@ -19,5 +19,5 @@ export {
 	normalizeSinclairYear
 } from './sinclair-coefficients.js';
 export { calculateQPoints, getQPointsAgeFactor } from './qpoints-coefficients.js';
-export { calculateGamx, Variant } from './gamx2.js';
+export { calculateGamx, computeGamxSnatch, computeGamxCJ, Variant, Lift } from './gamx2.js';
 export { calculateTeamPoints } from './team-points-formula.js';

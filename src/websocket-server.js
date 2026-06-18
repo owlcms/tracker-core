@@ -390,6 +390,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 							hubInstance.logosLoaded = false;
 							if (hubInstance.picturesLoaded !== undefined) hubInstance.picturesLoaded = false;
 							if (hubInstance.stylesLoaded !== undefined) hubInstance.stylesLoaded = false;
+							if (hubInstance.gamxLoaded !== undefined) hubInstance.gamxLoaded = false;
 							// Optionally clear any other relevant state here
 							logger.info('[WebSocket] First connection: hub state reset, flags/pictures cleared');
 						} catch (err) {

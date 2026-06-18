@@ -7,14 +7,16 @@
  * This is a JavaScript port of OWLCMS GAMX2.java, which matches R's gamlss.dist::pBCCG exactly.
  * 
  * Supports four parameter variants:
- * - SENIOR: Standard GAMX (params_sen files) - no age column
- * - AGE_ADJUSTED: GAMX-A for age-adjusted athletes (params_iwf files) - HAS age column
- * - U17: GAMX-U for U17 athletes (params_usa files) - HAS age column
- * - MASTERS: GAMX-M for masters athletes (params_mas files) - HAS age column
+ * - SENIOR: Standard GAMX (params-total-sen-{men|wom}.json) - no age column
+ * - AGE_ADJUSTED: GAMX-A for age-adjusted athletes (params-total-age-*.json) - HAS age column
+ * - U17: GAMX-U for U17 athletes (params-total-u17-*.json) - HAS age column
+ * - MASTERS: GAMX-M for masters athletes (params-total-mas-*.json) - HAS age column
+ * Snatch/CJ variants use params-snatch-{variant}-{gender}.json and params-cj-{variant}-{gender}.json
  * 
  * RUNTIME JSON LOADING:
- * Parameter tables are loaded from static/gamx/*.json at runtime to avoid bundling
- * 23MB of data into the JavaScript output.
+ * Parameter tables are loaded at runtime from local/gamx/, which OWLCMS delivers
+ * lazily via the gamx_zip resource (extracted by the hub's binary handler). No
+ * param tables are bundled with this package — OWLCMS is the source of truth.
  */
 
 import fs from 'fs';
@@ -32,6 +34,11 @@ export const Variant = {
 };
 
 /**
+ * Lift dimension for which the score is computed.
+ */
+export const Lift = { TOTAL: 'TOTAL', SNATCH: 'SNATCH', CJ: 'CJ' };
+
+/**
  * Metadata about each variant's table structure
  */
 const VARIANT_META = {
@@ -42,26 +49,17 @@ const VARIANT_META = {
 };
 
 /**
- * File paths for each variant and gender
+ * File name segments for building param file names.
+ * Name format: params-{lift}-{variant}-{gender}.json
+ * e.g. params-total-sen-men.json, params-cj-mas-wom.json
  */
-const PARAM_FILES = {
-    SENIOR: {
-        M: 'params-sen-men.json',
-        F: 'params-sen-wom.json'
-    },
-    AGE_ADJUSTED: {
-        M: 'params-iwf-men.json',
-        F: 'params-iwf-wom.json'
-    },
-    U17: {
-        M: 'params-usa-men.json',
-        F: 'params-usa-wom.json'
-    },
-    MASTERS: {
-        M: 'params-mas-men.json',
-        F: 'params-mas-wom.json'
-    }
-};
+const VARIANT_SEG = { SENIOR: 'sen', AGE_ADJUSTED: 'age', U17: 'u17', MASTERS: 'mas' };
+const LIFT_SEG    = { TOTAL: 'total', SNATCH: 'snatch', CJ: 'cj' };
+
+function paramFileName(lift, variant, gender) {
+    const g = gender === 'M' ? 'men' : 'wom';
+    return `params-${LIFT_SEG[lift]}-${VARIANT_SEG[variant]}-${g}.json`;
+}
 
 /**
  * Cache for loaded parameter tables (loaded on first use)
@@ -69,25 +67,13 @@ const PARAM_FILES = {
 const paramsCache = new Map();
 
 /**
- * Get the base path for GAMX JSON files
- * Works in both dev and production builds
+ * Get the base path for GAMX JSON files.
+ * The tables are delivered lazily by OWLCMS (gamx_zip) and extracted to
+ * <cwd>/local/gamx by the hub's binary handler. This is the sole source; no
+ * param tables are bundled with the package, so an offline build has no GAMX data.
  */
 function getGamxBasePath() {
-    // Try various possible locations
-    const candidates = [
-        path.join(process.cwd(), 'static', 'gamx'),           // Dev mode
-        path.join(process.cwd(), 'build', 'client', 'gamx'),  // Production build
-        path.join(process.cwd(), 'client', 'gamx'),           // Alternative production
-    ];
-    
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
-        }
-    }
-    
-    // Default to static/gamx
-    return candidates[0];
+    return path.join(process.cwd(), 'local', 'gamx');
 }
 
 /**
@@ -96,18 +82,18 @@ function getGamxBasePath() {
  * @param {string} gender - 'M' or 'F'
  * @returns {Array|null} Parameter array or null if not found
  */
-function loadParams(variant, gender) {
-    const cacheKey = `${variant}-${gender}`;
+function loadParams(lift, variant, gender) {
+    const cacheKey = `${lift}-${variant}-${gender}`;
     
     if (paramsCache.has(cacheKey)) {
         return paramsCache.get(cacheKey);
     }
     
-    const fileName = PARAM_FILES[variant]?.[gender];
-    if (!fileName) {
-        logger.warn(`GAMX: No file mapping for variant ${variant} gender ${gender}`);
+    if (!LIFT_SEG[lift] || !VARIANT_SEG[variant]) {
+        logger.warn(`GAMX: No file mapping for lift ${lift} variant ${variant} gender ${gender}`);
         return null;
     }
+    const fileName = paramFileName(lift, variant, gender);
     
     const basePath = getGamxBasePath();
     const filePath = path.join(basePath, fileName);
@@ -489,7 +475,7 @@ function computeGamxCore(total, mu, sigma, nu) {
  * @param {number|null} age - Age (required for MASTERS variant)
  * @returns {number} GAMX score, or 0 if inputs invalid
  */
-export function computeGamx(gender, bodyMass, total, variant = Variant.SENIOR, age = null) {
+export function computeGamx(gender, bodyMass, total, variant = Variant.SENIOR, age = null, lift = Lift.TOTAL) {
     if (!gender || !bodyMass || bodyMass <= 0 || !total || total <= 0) {
         return 0.0;
     }
@@ -501,7 +487,7 @@ export function computeGamx(gender, bodyMass, total, variant = Variant.SENIOR, a
     }
 
     // Load parameter table (cached after first load)
-    const params = loadParams(variant, g);
+    const params = loadParams(lift, variant, g);
     if (!params) {
         logger.warn(`GAMX: No parameters for variant ${variant} gender ${g}`);
         return 0.0;
@@ -542,6 +528,32 @@ export function computeGamxU(gender, bodyMass, total) {
  */
 export function computeGamxM(gender, bodyMass, total, age) {
     return computeGamx(gender, bodyMass, total, Variant.MASTERS, age);
+}
+
+/**
+ * Compute GAMX Snatch score (uses params-snatch-* tables).
+ * @param {string} gender - 'M' or 'F'
+ * @param {number} bodyMass - Body mass in kg
+ * @param {number} snatch - Best snatch in kg
+ * @param {string} variant - Parameter variant (default: SENIOR)
+ * @param {number|null} age - Age (required for MASTERS)
+ * @returns {number} GAMX snatch score, or 0 if inputs invalid
+ */
+export function computeGamxSnatch(gender, bodyMass, snatch, variant = Variant.SENIOR, age = null) {
+    return computeGamx(gender, bodyMass, snatch, variant, age, Lift.SNATCH);
+}
+
+/**
+ * Compute GAMX Clean & Jerk score (uses params-cj-* tables).
+ * @param {string} gender - 'M' or 'F'
+ * @param {number} bodyMass - Body mass in kg
+ * @param {number} cj - Best clean & jerk in kg
+ * @param {string} variant - Parameter variant (default: SENIOR)
+ * @param {number|null} age - Age (required for MASTERS)
+ * @returns {number} GAMX CJ score, or 0 if inputs invalid
+ */
+export function computeGamxCJ(gender, bodyMass, cj, variant = Variant.SENIOR, age = null) {
+    return computeGamx(gender, bodyMass, cj, variant, age, Lift.CJ);
 }
 
 /**
@@ -603,7 +615,7 @@ function qBCCG(p, mu, sigma, nu) {
  * @param {number|null} age - Age (required for MASTERS variant)
  * @returns {number} Minimum total in kg that strictly exceeds targetScore, or 0 if impossible
  */
-export function kgTarget(gender, targetScore, bodyMass, variant = Variant.SENIOR, age = null) {
+export function kgTarget(gender, targetScore, bodyMass, variant = Variant.SENIOR, age = null, lift = Lift.TOTAL) {
     if (!gender || bodyMass <= 0) {
         return 0;
     }
@@ -615,7 +627,7 @@ export function kgTarget(gender, targetScore, bodyMass, variant = Variant.SENIOR
     }
 
     // Load parameter table (cached after first load)
-    const params = loadParams(variant, g);
+    const params = loadParams(lift, variant, g);
     if (!params) {
         return 0;
     }

@@ -132,9 +132,11 @@ export class CompetitionHub extends EventEmitter {
     this.flagsLoaded = false;
     this.logosLoaded = false;
     this.picturesLoaded = false;
+    this.gamxLoaded = false;
     this.flagsReady = false;
     this.logosReady = false;
     this.picturesReady = false;
+    this.gamxReady = false;
     // Always start with translationsReady = false so tracker requests fresh translations on startup
     this.translationsReady = false;
     this.databaseAthleteIndex = new Map();
@@ -1028,6 +1030,10 @@ export class CompetitionHub extends EventEmitter {
         case 'pictures_zip':
           if (!this.picturesLoaded) missing.push('pictures_zip');
           break;
+        case 'gamx_zip':
+          // Pulled once and cached: only re-requested after a flush resets gamxLoaded
+          if (!this.gamxLoaded) missing.push('gamx_zip');
+          break;
         // database and translations_zip are handled by getMissingPreconditions()
         // styles is NOT sent by OWLCMS
       }
@@ -1059,7 +1065,8 @@ export class CompetitionHub extends EventEmitter {
     const resourceToEvent = {
       'flags_zip': 'flags_loaded',
       'logos_zip': 'logos_loaded',
-      'pictures_zip': 'pictures_loaded'
+      'pictures_zip': 'pictures_loaded',
+      'gamx_zip': 'gamx_loaded'
     };
     
     // Track which events we're waiting for
@@ -2579,6 +2586,18 @@ export class CompetitionHub extends EventEmitter {
   }
 
   /**
+   * Set gamx ready state (for binary-handler compatibility)
+   * @param {boolean} ready - Whether the GAMX parameter tables are ready
+   */
+  setGamxReady(ready) {
+    this.gamxReady = ready;
+    this.gamxLoaded = ready;
+    if (ready) {
+      logger.info('[Hub] ✅ GAMX parameters loaded and ready');
+    }
+  }
+
+  /**
    * Set database state (for binary-handler compatibility)
    * @param {object} database - Database state object
    */
@@ -2743,6 +2762,8 @@ export class CompetitionHub extends EventEmitter {
     this.flagsReady = false;
     this.logosLoaded = false;
     this.logosReady = false;
+    this.gamxLoaded = false;
+    this.gamxReady = false;
     // Clear translations completely so a reconnect forces a fresh translations_zip
     this.translations = {};
     this.lastTranslationsChecksum = null;
