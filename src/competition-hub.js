@@ -427,8 +427,13 @@ export class CompetitionHub extends EventEmitter {
           breakRemaining: breakTimer.timeRemaining,
           breakVisible: breakTimer.visible
         };
-        logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
-        logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
+        // Event-level tracking trimmed to reduce log noise: only log when a timer
+        // actually starts. Stop/Set/tick events and the per-event debug line are silenced.
+        if (timerEventType === 'StartTime') {
+          logger.info(`[Hub] Timer started ${fopName}`);
+        }
+        // logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
+        // logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
         this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
         this.emit('timer', { fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
       }
@@ -459,15 +464,22 @@ export class CompetitionHub extends EventEmitter {
           athleteFull: normalizedParams.athleteFull || null,
           athleteAbbreviated: normalizedParams.athleteAbbreviated || null
         };
-        logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
+        // Event-level tracking trimmed to reduce log noise: only log when a decision
+        // is actually shown (visible), not the down signal or reset events.
+        if (decisionPayload.visible) {
+          logger.info(`[Hub] Decision shown ${fopName}`);
+        }
+        // logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
         this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
         this.emit('decision', { fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
       }
       // Regular updates broadcast fop_update with full data
       else {
-        if (shouldLogCompetitionUpdate(normalizedParams)) {
-          logger.info(`[Hub] Update ${fopName}: ${normalizedParams.uiEvent}`);
-        }
+        // Event-level tracking trimmed to reduce log noise: per-update events are
+        // silenced so the logs focus on scoreboard watcher counts.
+        // if (shouldLogCompetitionUpdate(normalizedParams)) {
+        //   logger.info(`[Hub] Update ${fopName}: ${normalizedParams.uiEvent}`);
+        // }
         this.broadcast({
           type: 'fop_update',
           fop: fopName,
