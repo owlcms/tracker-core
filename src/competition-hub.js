@@ -466,10 +466,9 @@ export class CompetitionHub extends EventEmitter {
           athleteFull: normalizedParams.athleteFull || null,
           athleteAbbreviated: normalizedParams.athleteAbbreviated || null
         };
-        // Event-level tracking trimmed to reduce log noise: only log when a decision
-        // is actually shown (visible), not the down signal or reset events.
-        if (decisionPayload.visible) {
-          logger.info(`[Hub] Decision shown ${fopName}`);
+        // Log only the meaningful FULL_DECISION (not the down signal or initial phase).
+        if (decisionEventType === 'FULL_DECISION') {
+          logger.info(`[Hub] Decision ${fopName}: ${decisionPayload.type} ref1=${decisionPayload.ref1} ref2=${decisionPayload.ref2} ref3=${decisionPayload.ref3}`);
         }
         // logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
         this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
