@@ -99,6 +99,39 @@ function shouldLogCompetitionUpdate(params = {}) {
   ].includes(params.uiEvent);
 }
 
+function restoreBreakStartTimeIfNeeded(mergedState, existingState, now) {
+  const reportedBreakStartMillis = parseOptionalMillis(mergedState?.breakStartTimeMillis ?? mergedState?.breakStartTime);
+  if (reportedBreakStartMillis !== null && reportedBreakStartMillis > 0) {
+    return;
+  }
+
+  const existingBreakStartMillis = parseOptionalMillis(existingState?.breakStartTimeMillis ?? existingState?.breakStartTime);
+  if (existingBreakStartMillis !== null && existingBreakStartMillis > 0) {
+    mergedState.breakStartTimeMillis = String(existingBreakStartMillis);
+    return;
+  }
+
+  const breakRemainingMillis = parseOptionalMillis(mergedState?.breakMillisRemaining);
+  if (breakRemainingMillis === null || breakRemainingMillis <= 0) {
+    return;
+  }
+
+  const breakEvent = String(mergedState?.breakTimerEventType || '').toLowerCase();
+  const athleteEvent = String(mergedState?.athleteTimerEventType || '');
+  const fopState = String(mergedState?.fopState || '').toUpperCase();
+  const mode = String(mergedState?.mode || '').toUpperCase();
+  const breakPaused = breakEvent.includes('pause') || breakEvent === 'breakpaused';
+  const athleteTimerStarting = athleteEvent === 'StartTime';
+  const isCeremony = mode === 'CEREMONY';
+  const isSessionDone = mode === 'SESSION_DONE';
+  const inBreakState = !breakPaused && !athleteTimerStarting && !isCeremony
+    && (fopState === 'BREAK' || breakEvent.includes('start') || breakEvent === 'breakstarted' || isSessionDone);
+
+  if (inBreakState) {
+    mergedState.breakStartTimeMillis = String(now);
+  }
+}
+
 export class CompetitionHub extends EventEmitter {
   constructor() {
     super();
@@ -382,6 +415,7 @@ export class CompetitionHub extends EventEmitter {
         }
       }
 
+      restoreBreakStartTimeIfNeeded(mergedState, existingState, now);
       this._applyAthleteWarningFallbacks(mergedState);
       
       this.fopUpdates[fopName] = mergedState;
