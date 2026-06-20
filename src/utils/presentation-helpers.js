@@ -123,9 +123,10 @@ export function inferBreakMessage(breakType, ceremonyType, hub, locale = 'en') {
 		return hub.translate('PublicMsg.CompetitionPaused', locale);
 	}
 	
-	// Handle ceremony during a break (breakType == "CEREMONY" means we're in a ceremony)
-	// Only use ceremonyType when breakType indicates a ceremony is active
-	if (breakType === 'CEREMONY' && ceremonyType) {
+	// Handle ceremony during a break.
+	// OWLCMS sends mode='CEREMONY' with breakType equal to the upcoming lift type
+	// (e.g. 'FIRST_SNATCH'), NOT 'CEREMONY'. Use ceremonyType directly to detect this.
+	if (ceremonyType) {
 		switch (ceremonyType) {
 			case 'INTRODUCTION':
 				return hub.translate('BreakMgmt.IntroductionOfAthletes', locale);
