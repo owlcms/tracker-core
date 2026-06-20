@@ -16,12 +16,13 @@
   "scripts": {
     "build": "echo 'No build step required for @owlcms/tracker-core (ESM source package)'",
     "release": "node scripts/release.js",
-    "test": "npm run test:core-smoke && npm run test:championship-storage && npm run test:database-refresh-request && npm run test:broadcast-debounce && npm run test:break-resync",
+    "test": "npm run test:core-smoke && npm run test:championship-storage && npm run test:database-refresh-request && npm run test:broadcast-debounce && npm run test:break-resync && npm run test:record-status-persistence",
     "test:core-smoke": "node tests/smoke-test.js",
     "test:championship-storage": "node tests/championship-storage-test.js",
     "test:database-refresh-request": "node tests/database-refresh-request-test.js",
     "test:broadcast-debounce": "node tests/broadcast-debounce-test.js",
-    "test:break-resync": "node tests/break-resync-test.js"
+    "test:break-resync": "node tests/break-resync-test.js",
+    "test:record-status-persistence": "node tests/record-status-persistence-test.js"
   },
   "keywords": [
     "owlcms",

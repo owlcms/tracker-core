@@ -211,8 +211,10 @@ export function extractCurrentAttempt(fopUpdate, hub, getFlagUrl, locale = 'en')
 		};
 	}
 	
-	// Check if there's a current athlete using currentAthleteKey
-	if (!fopUpdate?.currentAthleteKey || !fopUpdate?.fullName) {
+	// Some reconnect/startup snapshots can carry displayable athlete fields
+	// before currentAthleteKey is restated. If OWLCMS already provides the
+	// visible lifter identity, render it instead of falling back to a blank bar.
+	if (!fopUpdate?.fullName) {
 		return null;
 	}
 	

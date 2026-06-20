@@ -390,7 +390,14 @@ export class CompetitionHub extends EventEmitter {
         const timerFields = ['athleteTimerEventType', 'athleteMillisRemaining', 'athleteStartTimeMillis', 
                            'athleteInitialWarningMillis', 'athleteFinalWarningMillis',
                            'breakTimerEventType', 'breakMillisRemaining', 'breakStartTimeMillis', 'timeAllowed'];
-        const decisionFields = ['decisionEventType', 'd1', 'd2', 'd3', 'decisionsVisible', 'down'];
+        const decisionFields = [
+          'decisionEventType',
+          'd1',
+          'd2',
+          'd3',
+          'decisionsVisible',
+          'down'
+        ];
         
         // Start with incoming data as the base (this ensures missing fields become undefined/null)
         mergedState = {
@@ -496,6 +503,7 @@ export class CompetitionHub extends EventEmitter {
           juryReversal: normalizedParams.juryReversal || null,
           waitForAnnouncer: normalizedParams.waitForAnnouncer || null,
           recordKind: normalizedParams.recordKind || null,
+          recordMessage: normalizedParams.recordMessage || null,
           actualLift: normalizedParams.actualLift || null,
           athleteFull: normalizedParams.athleteFull || null,
           athleteAbbreviated: normalizedParams.athleteAbbreviated || null
