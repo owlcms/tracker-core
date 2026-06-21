@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(rootDir, 'package.json');
+const releaseNotesPath = 'ReleaseNotes.md';
 
 const args = process.argv.slice(2);
 const newVersion = args[0];
@@ -25,13 +26,45 @@ if (!/^\d+\.\d+\.\d+/.test(newVersion)) {
   process.exit(1);
 }
 
+function getDirtyPaths() {
+  const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' });
+
+  return status
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const arrowIndex = line.indexOf('->');
+      if (arrowIndex !== -1) {
+        return line.slice(arrowIndex + 2).trim();
+      }
+
+      return line.substring(2).trim();
+    });
+}
+
+function autoCommitReleaseNotesIfNeeded(dirtyPaths) {
+  if (dirtyPaths.length === 1 && dirtyPaths[0] === releaseNotesPath) {
+    console.log('📝 Committing ReleaseNotes.md before release...');
+    execSync(`git add ${releaseNotesPath}`, { cwd: rootDir, stdio: 'inherit' });
+    execSync('git commit -m "docs: update release notes"', { cwd: rootDir, stdio: 'inherit' });
+    return [];
+  }
+
+  return dirtyPaths;
+}
+
 // Check for dirty worktree (uncommitted changes)
 try {
-  const status = execSync('git status --porcelain', { cwd: rootDir, encoding: 'utf8' });
-  if (status.trim()) {
+  let dirtyPaths = getDirtyPaths();
+  dirtyPaths = autoCommitReleaseNotesIfNeeded(dirtyPaths);
+
+  if (dirtyPaths.length > 0) {
     console.error('❌ Error: Working tree is dirty. Please commit or stash changes before releasing.');
     console.error('\nUncommitted changes:');
-    console.error(status);
+    for (const dirtyPath of dirtyPaths) {
+      console.error(` M ${dirtyPath}`);
+    }
     process.exit(1);
   }
 } catch (error) {
