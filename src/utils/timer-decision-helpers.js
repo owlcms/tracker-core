@@ -111,14 +111,14 @@ export function extractTimers(fopUpdate, language = 'en') {
 	// While fopState may already be 'BREAK' (e.g. before_introduction configured but not yet started),
 	// we hide the timer until breakStartTimeMillis is set by OWLCMS.
 	const breakTimerStarted = breakStartMillisReported > 0;
-	const decisionEvent = Boolean(fopUpdate?.decisionEventType || fopUpdate?.decisionsVisible === 'true' || fopUpdate?.down === 'true');
 	const mode = String(fopUpdate?.mode || '').toUpperCase();
+	const breakFlag = fopUpdate?.break === true || fopUpdate?.break === 'true';
 
 	const normBreakEvent = (breakEvent || '').toString().toLowerCase();
 	const breakPaused = normBreakEvent.includes('pause') || normBreakEvent === 'breakpaused';
 
 	// If athlete timer starts, we exit break state
-	const athleteTimerStarting = athleteEvent === 'StartTime';
+	const athleteTimerStarting = athleteEvent === 'StartTime' && fopState !== 'BREAK' && !breakFlag;
 
 	// Determine if we're in a break state:
 	// - fopState === 'BREAK' means we're in a break
@@ -161,15 +161,18 @@ export function extractTimers(fopUpdate, language = 'en') {
 		type: 'break',
 		state: inBreakState ? 'running' : 'stopped',
 		isActive: !isInactive && inBreakState,
-		visible: !isInactive && !isSessionDone && inBreakState && !decisionEvent && breakTimerStarted,
+		visible: !isInactive && !isSessionDone && inBreakState && (breakTimerStarted || Boolean(breakDisplayText)),
 		timeRemaining: computedBreakRemaining,    // 0 if no timing data
 		duration: breakRemainingReported || parseInt(fopUpdate?.breakTimeAllowed || fopUpdate?.timeAllowed || 600000),
 		startTime: breakStartMillisReported || null,
 		displayText: breakDisplayText  // "STOP"/"STOPP" for INTERRUPTION mode, null otherwise
 	};
 
-	// Update athlete timer visibility: hide during break, inactive, SESSION_DONE, or ceremony
-	athleteTimer.visible = !isInactive && !isSessionDone && !isCeremony && !inBreakState && athleteTimer.isActive;
+	const athleteTimerDisplayReady = fopUpdate?.athleteTimerDisplayReady !== false;
+
+	// Update athlete timer visibility: hide during break, inactive, SESSION_DONE,
+	// ceremony, or while the timer value is only prepared for an athlete not yet shown.
+	athleteTimer.visible = !isInactive && !isSessionDone && !isCeremony && !inBreakState && athleteTimerDisplayReady && athleteTimer.isActive;
 
 	return { timer: athleteTimer, breakTimer };
 }
@@ -188,11 +191,12 @@ export function extractTimers(fopUpdate, language = 'en') {
  */
 export function computeDisplayMode(timer, breakTimer, decision) {
 	const decisionPresent = Boolean(decision?.visible);
+	const decisionSignalPresent = decisionPresent || Boolean(decision?.type) || Boolean(decision?.down);
 	
 	// Priority: decision > break timer > athlete timer > nothing
 	let displayMode = decisionPresent ? 'decision' : 
 	                  (breakTimer?.visible ? 'break' : 
-	                  (timer?.visible ? 'athlete' : 'none'));
+	                  (timer?.visible && !decisionSignalPresent ? 'athlete' : 'none'));
 	
 	// Defensive rule: if break timer is actively running and visible, and there's no visible
 	// decision, prefer the break display even if other flags are inconsistent.
@@ -223,9 +227,11 @@ export function computeDisplayMode(timer, breakTimer, decision) {
 export function extractDecisionState(fopUpdate) {
 	const eventType = fopUpdate?.athleteTimerEventType;
 	const mode = String(fopUpdate?.mode || '').toUpperCase();
+	const fopState = String(fopUpdate?.fopState || '').toUpperCase();
 	const isSessionDone = mode === 'SESSION_DONE';
+	const isBreakState = fopState === 'BREAK' || mode.startsWith('LIFT_COUNTDOWN') || fopUpdate?.break === true || fopUpdate?.break === 'true';
 	
-	if (eventType === 'StartTime' || isSessionDone) {
+	if (eventType === 'StartTime' || isSessionDone || isBreakState) {
 		return {
 			visible: false, type: null, isSingleReferee: false,
 			ref1: null, ref2: null, ref3: null, down: false

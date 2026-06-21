@@ -25,6 +25,180 @@ function parseOptionalMillis(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function formatTimerMillis(value) {
+  const millis = Math.max(0, parseOptionalMillis(value) ?? 0);
+  const totalSeconds = Math.ceil(millis / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+const ATHLETE_TIMER_FIELDS = [
+  'athleteTimerEventType',
+  'athleteMillisRemaining',
+  'athleteStartTimeMillis',
+  'athleteInitialWarningMillis',
+  'athleteFinalWarningMillis',
+  'timeAllowed'
+];
+
+const EXPLICIT_ATHLETE_TIMER_EVENTS = new Set(['SetTime', 'StartTime', 'StopTime']);
+
+function hasOwn(object, field) {
+  return Object.prototype.hasOwnProperty.call(object || {}, field);
+}
+
+function isIncomingBreakState(params = {}) {
+  const fopState = String(params?.fopState || '').toUpperCase();
+  const mode = String(params?.mode || '').toUpperCase();
+  const breakFlag = params?.break === true || params?.break === 'true';
+  return fopState === 'BREAK' || mode.startsWith('LIFT_COUNTDOWN') || breakFlag;
+}
+
+function isCurrentAthleteUpdate(params = {}) {
+  return params?.uiEvent === 'LiftingOrderUpdated' || hasOwn(params, 'currentAthleteKey');
+}
+
+function isDisplayedCurrentAthleteState(state = {}) {
+  const fopState = String(state?.fopState || '').toUpperCase();
+  const mode = String(state?.mode || '').toUpperCase();
+  return !isIncomingBreakState(state)
+    && mode === 'CURRENT_ATHLETE'
+    && (fopState === 'CURRENT_ATHLETE_DISPLAYED' || fopState === 'TIME_RUNNING' || fopState === 'TIME_STOPPED');
+}
+
+function hasDecisionSignal(state = {}) {
+  return Boolean(state?.decisionEventType)
+    || state?.down === 'true'
+    || state?.down === true
+    || state?.decisionsVisible === 'true'
+    || state?.decisionsVisible === true;
+}
+
+function preserveAthleteTimerUnlessExplicit(mergedState, normalizedParams, existingState, messageType) {
+  if (messageType === 'timer' && EXPLICIT_ATHLETE_TIMER_EVENTS.has(normalizedParams?.athleteTimerEventType)) {
+    return;
+  }
+
+  const hasIncomingAthleteTimerField = ATHLETE_TIMER_FIELDS.some((field) => hasOwn(normalizedParams, field));
+  if (!hasIncomingAthleteTimerField) {
+    return;
+  }
+
+  for (const field of ATHLETE_TIMER_FIELDS) {
+    if (hasOwn(existingState, field)) {
+      mergedState[field] = existingState[field];
+    } else {
+      delete mergedState[field];
+    }
+  }
+}
+
+function clearStaleDecisionForExplicitAthleteTimer(mergedState, normalizedParams, messageType) {
+  if (messageType !== 'timer') {
+    return;
+  }
+
+  const athleteEvent = normalizedParams?.athleteTimerEventType;
+  if (athleteEvent !== 'StartTime') {
+    return;
+  }
+
+  for (const field of ['decisionEventType', 'd1', 'd2', 'd3', 'decision', 'decisionsVisible', 'down']) {
+    if (!hasOwn(normalizedParams, field)) {
+      delete mergedState[field];
+    }
+  }
+}
+
+function clearStaleDecisionForCurrentAthleteUpdate(mergedState, normalizedParams, messageType) {
+  if (messageType !== 'update') {
+    return;
+  }
+
+  if (!isCurrentAthleteUpdate(normalizedParams) || isIncomingBreakState(normalizedParams)) {
+    return;
+  }
+
+  for (const field of ['decisionEventType', 'd1', 'd2', 'd3', 'decision', 'decisionsVisible', 'down']) {
+    if (!hasOwn(normalizedParams, field)) {
+      delete mergedState[field];
+    }
+  }
+}
+
+function updateAthleteTimerDisplayReadiness(mergedState, normalizedParams, existingState, messageType) {
+  if (messageType === 'decision' && hasDecisionSignal(normalizedParams)) {
+    mergedState.athleteTimerDisplayReady = false;
+    return;
+  }
+
+  if (messageType === 'update') {
+    if (isIncomingBreakState(normalizedParams)) {
+      mergedState.athleteTimerDisplayReady = false;
+      return;
+    }
+    if (isCurrentAthleteUpdate(normalizedParams)) {
+      mergedState.athleteTimerDisplayReady = true;
+    }
+    return;
+  }
+
+  if (messageType !== 'timer') {
+    return;
+  }
+
+  const athleteEvent = normalizedParams?.athleteTimerEventType;
+  if (athleteEvent === 'StartTime') {
+    mergedState.athleteTimerDisplayReady = true;
+  } else if (athleteEvent === 'SetTime') {
+    mergedState.athleteTimerDisplayReady = isDisplayedCurrentAthleteState(mergedState) && !hasDecisionSignal(mergedState);
+  } else if (athleteEvent === 'StopTime') {
+    mergedState.athleteTimerDisplayReady = !isIncomingBreakState(mergedState) && existingState?.athleteTimerDisplayReady !== false;
+  }
+}
+
+function snapshotStoppedAthleteTimerIfNeeded(mergedState, normalizedParams, existingState, now, messageType) {
+  if (messageType !== 'timer' || normalizedParams?.athleteTimerEventType !== 'StopTime') {
+    return;
+  }
+
+  const athleteStartMillis = parseOptionalMillis(mergedState?.athleteStartTimeMillis)
+    ?? parseOptionalMillis(existingState?.athleteStartTimeMillis);
+  const mergedRemainingMillis = parseOptionalMillis(mergedState?.athleteMillisRemaining);
+  if (athleteStartMillis === null || athleteStartMillis <= 0 || mergedRemainingMillis === null || mergedRemainingMillis <= 0) {
+    return;
+  }
+
+  const hasReportedRemaining = Object.prototype.hasOwnProperty.call(normalizedParams, 'athleteMillisRemaining');
+  const reportedRemainingMillis = parseOptionalMillis(normalizedParams?.athleteMillisRemaining);
+  const existingRemainingMillis = parseOptionalMillis(existingState?.athleteMillisRemaining);
+  const missingReportedRemaining = !hasReportedRemaining || reportedRemainingMillis === null;
+  const looksLikePreservedStartSnapshot = existingRemainingMillis !== null
+    && reportedRemainingMillis !== null
+    && reportedRemainingMillis >= existingRemainingMillis;
+
+  if (!missingReportedRemaining && !looksLikePreservedStartSnapshot) {
+    return;
+  }
+
+  const elapsedRemainingMillis = Math.max(0, athleteStartMillis + mergedRemainingMillis - now);
+  if (elapsedRemainingMillis < mergedRemainingMillis) {
+    mergedState.athleteMillisRemaining = String(elapsedRemainingMillis);
+  }
+}
+
+function clearNonRunningAthleteStartTime(mergedState, normalizedParams, messageType) {
+  if (messageType !== 'timer') {
+    return;
+  }
+
+  const athleteEvent = normalizedParams?.athleteTimerEventType;
+  if (athleteEvent === 'SetTime' || athleteEvent === 'StopTime') {
+    mergedState.athleteStartTimeMillis = null;
+  }
+}
+
 function deriveLegacyAthleteWarningThresholds(duration) {
   if (duration === 120000) {
     return { athleteInitialWarningMillis: 90000, athleteFinalWarningMillis: 30000 };
@@ -422,6 +596,12 @@ export class CompetitionHub extends EventEmitter {
         }
       }
 
+      preserveAthleteTimerUnlessExplicit(mergedState, normalizedParams, existingState, messageType);
+      clearStaleDecisionForExplicitAthleteTimer(mergedState, normalizedParams, messageType);
+      clearStaleDecisionForCurrentAthleteUpdate(mergedState, normalizedParams, messageType);
+      updateAthleteTimerDisplayReadiness(mergedState, normalizedParams, existingState, messageType);
+      snapshotStoppedAthleteTimerIfNeeded(mergedState, normalizedParams, existingState, now, messageType);
+      clearNonRunningAthleteStartTime(mergedState, normalizedParams, messageType);
       restoreBreakStartTimeIfNeeded(mergedState, existingState, now);
       this._applyAthleteWarningFallbacks(mergedState);
       
@@ -471,9 +651,12 @@ export class CompetitionHub extends EventEmitter {
           breakVisible: breakTimer.visible
         };
         // Event-level tracking trimmed to reduce log noise: only log when a timer
-        // actually starts. Stop/Set/tick events and the per-event debug line are silenced.
+        // actually starts or stops. Set/tick events and the per-event debug line are silenced.
         if (timerEventType === 'StartTime') {
           logger.info(`[Hub] Timer started ${fopName}`);
+        } else if (timerEventType === 'StopTime') {
+          const serverLocalTime = normalizedParams.serverLocalTime ? `, serverLocalTime=${normalizedParams.serverLocalTime}` : '';
+          logger.info(`[Hub] Timer Stopped ${fopName} at ${formatTimerMillis(timerPayload.timeRemaining)} (${timerPayload.timeRemaining}ms remaining${serverLocalTime})`);
         }
         // logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
         // logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
