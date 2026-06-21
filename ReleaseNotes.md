@@ -1,6 +1,8 @@
 Release Notes
 
 ## Version 1.5
+- 1.15.15: record attempt vs new
+- 1.15.14: break timers
 - 1.15.13: manage ceremonies states more completely to better feed scoreboardss
 - 1.15.12: reduce spurious logs for scoreboard decision tracking
 - 1.5.11: correctly track client id when a tab is closed to release SSE
