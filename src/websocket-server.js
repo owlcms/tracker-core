@@ -56,6 +56,35 @@ function configuredUpdateKey() {
 	return key == null || key.trim() === '' ? null : key;
 }
 
+function toOwlcmsMissingName(resource) {
+	switch (resource) {
+		case 'translations_zip':
+			return 'translations';
+		case 'flags_zip':
+			return 'flags';
+		case 'logos_zip':
+			return 'logos';
+		case 'pictures_zip':
+			return 'pictures';
+		default:
+			return resource;
+	}
+}
+
+function toOwlcmsMissingList(missing) {
+	if (!Array.isArray(missing)) return [];
+	return [...new Set(missing.map(toOwlcmsMissingName))];
+}
+
+function preconditionResponse({ message, reason, missing }) {
+	return {
+		status: 428,
+		message,
+		reason,
+		missing: toOwlcmsMissingList(missing)
+	};
+}
+
 let wss = null;
 let activeConnection = null; // Track active WebSocket connection for sending messages
 let hubInstance = null; // Injected hub instance from attach/inject mode
@@ -100,7 +129,7 @@ function sendPreconditionRequest({ missing, message, reason, logLabel }) {
 		status: 428,
 		message,
 		reason,
-		missing
+		missing: toOwlcmsMissingList(missing)
 	}));
 	return true;
 }
@@ -127,16 +156,16 @@ export function requestDatabaseRefresh() {
  * Called by plugins when they need resources that aren't loaded yet
  * @param {string[]} resources - Array of resource types to request (e.g., ['flags_zip', 'logos_zip'])
  */
-export function requestResources(resources) {
+export function requestResources(resources, options = {}) {
 	if (!resources || resources.length === 0) {
 		return false;
 	}
 
 	return sendPreconditionRequest({
 		missing: resources,
-		message: 'Precondition Required: Plugin needs resources',
-		reason: 'plugin_preconditions',
-		logLabel: 'resources'
+		message: options.message || 'Precondition Required: Plugin needs resources',
+		reason: options.reason || 'plugin_preconditions',
+		logLabel: options.logLabel || 'resources'
 	});
 }
 
@@ -325,6 +354,8 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				try { callbacks.onConnect(ws); } catch (e) { logger.error('[WebSocket] onConnect error:', e); }
 			}
 			activeConnection = ws; // Store active connection for sending resource requests
+			flushAndResetOnce();
+			hubInstance.requestStartupResources?.();
 
 			const expectedUpdateKey = configuredUpdateKey();
 			const remoteAddress = ws?._socket?.remoteAddress || 'unknown remote';
@@ -366,7 +397,11 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					return;
 				}
 
-				const requested = requestResources(['logos_zip']);
+				const requested = hubInstance.requestResources(['logos_zip'], {
+					message: 'Precondition Required: Startup document resources needed',
+					reason: 'startup_document_resources',
+					logLabel: 'startup document resources'
+				});
 				if (!requested) {
 					logger.warn(`[WebSocket] Unable to request logos_zip after ${source} database load`);
 					return;
@@ -376,8 +411,10 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				logger.info(`[WebSocket] Requested logos_zip after ${source} database load for document plugins`);
 			}
 
-				// Helper to reset hub state only on the first connection after server start
-				async function flushAndResetOnce() {
+				// Helper to reset hub state only on the first connection after server start.
+				// This runs before startup resources are requested so resources that arrive
+				// before the database frame are not cleared by a later first-database reset.
+				function flushAndResetOnce() {
 					if (!firstConnectionHandled) {
 						try {
 							// Reset the database and translations in the hub
@@ -463,7 +500,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 						}
 					} catch (peekErr) {}
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
-						await flushAndResetOnce();
+						flushAndResetOnce();
 					}
 					await handleBinaryMessage(binaryPayload, hubInstance);
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
@@ -548,7 +585,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				let result;
 				switch (message.type) {
 					case 'database':
-						await flushAndResetOnce();
+						flushAndResetOnce();
 						result = await handleDatabaseMessage(message.payload);
 						break;
 					case 'update':
@@ -738,12 +775,11 @@ async function handleUpdateMessage(payload, hasBundledDatabase = false) {
 	// Always check for missing preconditions and request them
 	if (missing.length > 0) {
 		logger.warn(`[WebSocket] Update processed but missing preconditions: ${missing.join(', ')}`);
-		return {
-			status: 428,
+		return preconditionResponse({
 			message: 'Precondition Required: Missing required data',
 			reason: 'missing_preconditions',
-			missing: missing
-		};
+			missing
+		});
 	}
 
 	if (hasBundledDatabase) {
@@ -763,12 +799,11 @@ async function handleTimerMessage(payload, hasBundledDatabase = false) {
 	// Request missing preconditions (database and/or translations)
 	if (missing.length > 0) {
 		logger.warn(`[WebSocket] Timer received but missing: ${missing.join(', ')}`);
-		return {
-			status: 428,
+		return preconditionResponse({
 			message: 'Precondition Required: Missing required data',
 			reason: 'missing_preconditions',
-			missing: missing
-		};
+			missing
+		});
 	}
 
 	return mapHubResultToResponse(result, 'timer');
@@ -784,12 +819,11 @@ async function handleDecisionMessage(payload, hasBundledDatabase = false) {
 	// Request missing preconditions (database and/or translations)
 	if (missing.length > 0) {
 		logger.warn(`[WebSocket] Decision received but missing: ${missing.join(', ')}`);
-		return {
-			status: 428,
+		return preconditionResponse({
 			message: 'Precondition Required: Missing required data',
 			reason: 'missing_preconditions',
-			missing: missing
-		};
+			missing
+		});
 	}
 
 	return mapHubResultToResponse(result, 'decision');
@@ -833,11 +867,11 @@ function mapHubResultToResponse(result, messageType) {
 
 	if (result.needsData) {
 		const missing = hubInstance.getMissingPreconditions();
-		return { 
-			status: 428, 
+		return preconditionResponse({
 			message: 'Precondition Required: Missing required data',
-			missing: missing
-		};
+			reason: 'missing_preconditions',
+			missing
+		});
 	}
 
 	return { status: 500, message: result.reason || `Unable to process ${messageType}` };
@@ -855,12 +889,11 @@ async function handleGenericMessage(payload, hasBundledDatabase, type) {
 		logger.warn(`[WebSocket] ${type} message received but no database - requesting database`);
 		const interimResult = hubInstance.handleOwlcmsMessage(payload, type || 'generic');
 		const missing = hubInstance.getMissingPreconditions();
-		return {
-			status: 428,
+		return preconditionResponse({
 			message: 'Precondition Required: Missing required data',
 			reason: interimResult?.reason || 'no_database_state',
-			missing: missing
-		};
+			missing
+		});
 	}
 
 	const result = hubInstance.handleOwlcmsMessage(payload, type || 'generic');

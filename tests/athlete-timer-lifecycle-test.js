@@ -45,6 +45,31 @@ assert.equal(stopped.timer.startTime, null, 'StopTime should not keep a running 
 assert.equal(stopped.timer.visible, true, 'stopped timer should remain visible until the down signal arrives');
 assert.equal(stopped.displayMode, 'athlete', 'stopped timer should own display before down signal');
 
+const duplicateStop = hub.handleOwlcmsMessage({
+  fop: 'A',
+  fopState: 'TIME_STOPPED',
+  mode: 'CURRENT_ATHLETE',
+  athleteTimerEventType: 'StopTime',
+  athleteMillisRemaining: 57060,
+  athleteStartTimeMillis: String(Date.now() + 1000),
+  timeAllowed: '60000'
+}, 'timer');
+assert.equal(duplicateStop.suppressed, 'duplicate_stop', 'duplicate StopTime should be suppressed only when remaining time matches');
+
+const correctiveStop = hub.handleOwlcmsMessage({
+  fop: 'A',
+  fopState: 'TIME_STOPPED',
+  mode: 'CURRENT_ATHLETE',
+  athleteTimerEventType: 'StopTime',
+  athleteMillisRemaining: '55625',
+  athleteStartTimeMillis: String(Date.now() + 2000),
+  timeAllowed: '60000'
+}, 'timer');
+assert.equal(correctiveStop.suppressed, undefined, 'StopTime with a different remaining time must not be suppressed');
+
+const correctedStop = currentTimerState();
+assert.equal(correctedStop.timer.timeRemaining, 55625, 'corrective StopTime should update the frozen remaining time');
+
 hub.handleOwlcmsMessage({
   fop: 'A',
   fopState: 'DOWN_SIGNAL_VISIBLE',
@@ -55,7 +80,7 @@ hub.handleOwlcmsMessage({
 }, 'decision');
 
 const down = currentTimerState();
-assert.equal(down.timer.timeRemaining, 57060, 'down signal must not mutate the frozen athlete timer');
+assert.equal(down.timer.timeRemaining, 55625, 'down signal must not mutate the frozen athlete timer');
 assert.equal(down.decision.visible, true, 'down signal should own the display');
 assert.equal(down.displayMode, 'decision', 'down signal should switch display mode to decision');
 
@@ -72,7 +97,7 @@ hub.handleOwlcmsMessage({
 }, 'decision');
 
 const fullDecision = currentTimerState();
-assert.equal(fullDecision.timer.timeRemaining, 57060, 'full decision must not mutate the frozen athlete timer');
+assert.equal(fullDecision.timer.timeRemaining, 55625, 'full decision must not mutate the frozen athlete timer');
 assert.equal(fullDecision.decision.visible, true, 'full decision should own the display');
 assert.equal(fullDecision.displayMode, 'decision', 'full decision should keep decision display mode');
 

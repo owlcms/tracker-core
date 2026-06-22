@@ -17,6 +17,15 @@ import { parseV2Database } from './protocol/parser-v2.js';
 import { logger } from './utils/logger.js';
 import { extractTimers, computeDisplayMode, extractDecisionState } from './utils/timer-decision-helpers.js';
 
+// Pending-resource retry tuning. The loop polls frequently (POLL) but each
+// resource is only re-requested once its own backoff window has elapsed. Real
+// (actually-sent) retries back off exponentially from BASE up to MAX_BACKOFF so
+// large, legitimately-slow payloads are not re-requested while in transit.
+const RESOURCE_RETRY_POLL_MS = 1000;
+const RESOURCE_RETRY_BASE_MS = 5000;
+const RESOURCE_RETRY_MAX_BACKOFF_MS = 30000;
+const RESOURCE_MAX_RETRIES = 12;
+
 function parseOptionalMillis(value) {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -362,6 +371,11 @@ export class CompetitionHub extends EventEmitter {
     
     // Injected callback for requesting resources from OWLCMS (set by websocket-server)
     this._requestResourcesCallback = null;
+
+    // Pending resource retry tracker — resources requested via 428 but not yet
+    // received. Retries automatically until fulfilled or max retries reached.
+    this._pendingResources = new Map();
+    this._resourceRetryTimer = null;
     
     // Debounce state for broadcasts - per FOP and event type
     this.lastBroadcastTime = {};  // Structure: { 'fopName-eventType': timestamp }
@@ -469,6 +483,49 @@ export class CompetitionHub extends EventEmitter {
    */
   setRequestResourcesCallback(callback) {
     this._requestResourcesCallback = callback;
+    if (callback && this._hasActivePendingResources()) this._ensureResourceRetryLoop();
+  }
+
+  /**
+   * Request resources from OWLCMS and register them for retry until fulfilled.
+   * This is the non-blocking path used by startup/preload callers; plugin
+   * rendering uses requestPluginPreconditions() when it must wait for delivery.
+   * @param {Array<string>} resources
+   * @param {object} [options] - Optional transport metadata for logs/428 reason
+   * @returns {boolean} true if the request was sent on the active connection
+   */
+  requestResources(resources = [], options = {}) {
+    if (!Array.isArray(resources) || resources.length === 0) return false;
+    this._trackPendingResources(resources, options);
+    if (!this._requestResourcesCallback) {
+      logger.error('[Hub] Cannot request resources - callback not set');
+      return false;
+    }
+    return this._requestResourcesCallback(resources, options);
+  }
+
+  /**
+   * Queue the base resources needed for a usable tracker session.
+   *
+   * OWLCMS already sends database/translations/flags once at socket startup.
+   * We queue base resources here so that automatic startup frames can fulfill
+   * them without us immediately duplicating the startup send. If a resource
+   * still has not arrived after the normal retry delay, the pending-resource
+   * loop sends the 428-style request.
+   *
+   * Optional plugin resources remain lazy and are requested through
+   * ensurePluginPreconditions() when a plugin declares them.
+   * @returns {boolean} true if resources were queued, false if everything is ready
+   */
+  requestStartupResources() {
+    const missing = this.getMissingPreconditions();
+    if (missing.length === 0) return false;
+    this._trackPendingResources(missing, {
+      message: 'Precondition Required: Startup resources needed',
+      reason: 'startup_preconditions',
+      logLabel: 'startup resources'
+    });
+    return true;
   }
 
   /**
@@ -594,6 +651,21 @@ export class CompetitionHub extends EventEmitter {
             mergedState[field] = existingState[field];
           }
         }
+      }
+
+      // Suppress redundant StopTime events. OWLCMS sends a defensive stop on
+      // down signal even if the timekeeper already stopped the clock. The first
+      // stop captures the authoritative remaining value; the redundant one carries
+      // a fabricated athleteStartTimeMillis that would corrupt the snapshot math.
+      // We only suppress when athleteMillisRemaining is identical — a SetTime reset
+      // carries a different athleteTimerEventType, and a corrective StopTime carries
+      // a different remaining value, so both pass through correctly.
+      if (messageType === 'timer'
+          && normalizedParams.athleteTimerEventType === 'StopTime'
+          && existingState?.athleteTimerEventType === 'StopTime'
+          && parseOptionalMillis(normalizedParams.athleteMillisRemaining) === parseOptionalMillis(existingState.athleteMillisRemaining)) {
+        logger.debug(`[Hub] Ignoring redundant StopTime for FOP ${fopName} (already stopped)`);
+        return { accepted: true, suppressed: 'duplicate_stop' };
       }
 
       preserveAthleteTimerUnlessExplicit(mergedState, normalizedParams, existingState, messageType);
@@ -724,6 +796,9 @@ export class CompetitionHub extends EventEmitter {
         // Only request database at this point - translations/flags will arrive via OWLCMS startup callback
         logger.log(`[Hub] Database not yet received, requesting from OWLCMS (update was still processed)`);
         this.databaseRequested = Date.now();
+        // Track here so the retry loop owns the database too, independent of the
+        // transport layer later calling getMissingPreconditions().
+        this._trackPendingResources(['database']);
         return { 
           accepted: false, 
           needsData: true, 
@@ -870,6 +945,7 @@ export class CompetitionHub extends EventEmitter {
       this.lastDatabaseLoad = Date.now();
       this.databaseRequested = 0; // Reset request flag since database has arrived
       this.lastDatabaseChecksum = this.databaseState.databaseChecksum;
+      this._fulfillResource('database');
       
       // ✅ Signal all waiters that database is ready (handles JSON, binary, and empty+binary paths)
       this.emit('database:ready');
@@ -1224,7 +1300,11 @@ export class CompetitionHub extends EventEmitter {
     // Check translations - ALWAYS required
     if (!this.translationsReady) {
       missing.push('translations_zip');
-      logger.log(`[Hub] 🔄 Requesting translations_zip from OWLCMS (428 response)`);
+      logger.log(`[Hub] 🔄 Queueing translations_zip precondition`);
+    }
+
+    if (missing.length > 0) {
+      this._trackPendingResources(missing);
     }
     
     // NOTE: flags_zip, logos_zip, pictures_zip are NOT checked here anymore
@@ -1300,8 +1380,7 @@ export class CompetitionHub extends EventEmitter {
     
     if (pendingEvents.length === 0) {
       // No known resource events to wait for
-      this._requestResourcesCallback(missing);
-      return true;
+      return this.requestResources(missing);
     }
     
     // Create promise that resolves when all resources are loaded
@@ -1349,7 +1428,7 @@ export class CompetitionHub extends EventEmitter {
     });
     
     // Send the request
-    this._requestResourcesCallback(missing);
+    this.requestResources(missing);
     
     // Race between load completion and timeout
     const timeoutPromise = new Promise((resolve) => {
@@ -2722,6 +2801,7 @@ export class CompetitionHub extends EventEmitter {
   markTranslationsComplete(localesCount) {
     if (Object.keys(this.translations).length > 0) {
       this.translationsReady = true;
+      this._fulfillResource('translations_zip');
       logger.log(`[Hub] ✅ Translations loaded: ${Object.keys(this.translations).length} locales`);
       
       // Check if hub is now fully ready (database + translations)
@@ -2751,6 +2831,7 @@ export class CompetitionHub extends EventEmitter {
    */
   setTranslationsReady(ready) {
     if (ready) {
+      this._fulfillResource('translations_zip');
       this.markTranslationsComplete(Object.keys(this.translations).length);
     } else {
       this.translationsReady = false;
@@ -2781,6 +2862,7 @@ export class CompetitionHub extends EventEmitter {
     this.flagsReady = ready;
     this.flagsLoaded = ready;
     if (ready) {
+      this._fulfillResource('flags_zip');
       logger.info('[Hub] ✅ Flags loaded and ready');
     }
   }
@@ -2793,6 +2875,7 @@ export class CompetitionHub extends EventEmitter {
     this.logosReady = ready;
     this.logosLoaded = ready;
     if (ready) {
+      this._fulfillResource('logos_zip');
       logger.info('[Hub] ✅ Logos loaded and ready');
     }
   }
@@ -2805,6 +2888,7 @@ export class CompetitionHub extends EventEmitter {
     this.picturesReady = ready;
     this.picturesLoaded = ready;
     if (ready) {
+      this._fulfillResource('pictures_zip');
       logger.info('[Hub] ✅ Pictures loaded and ready');
     }
   }
@@ -2817,6 +2901,7 @@ export class CompetitionHub extends EventEmitter {
     this.gamxReady = ready;
     this.gamxLoaded = ready;
     if (ready) {
+      this._fulfillResource('gamx_zip');
       logger.info('[Hub] ✅ GAMX parameters loaded and ready');
     }
   }
@@ -2826,6 +2911,7 @@ export class CompetitionHub extends EventEmitter {
    * @param {object} database - Database state object
    */
   setDatabaseState(database) {
+    this._fulfillResource('database');
     this.databaseState = {
       ...database,
       lastUpdate: Date.now(),
@@ -2912,6 +2998,7 @@ export class CompetitionHub extends EventEmitter {
     if (!this.flagsLoaded) {
       this.flagsLoaded = true;
       this.flagsReady = true;
+      this._fulfillResource('flags_zip');
       logger.log('[Hub] ✅ Flags ZIP processed and cached');
     }
   }
@@ -2923,6 +3010,7 @@ export class CompetitionHub extends EventEmitter {
     if (!this.logosLoaded) {
       this.logosLoaded = true;
       this.logosReady = true;
+      this._fulfillResource('logos_zip');
       logger.log('[Hub] ✅ Logos ZIP processed and cached');
     }
   }
@@ -2970,6 +3058,101 @@ export class CompetitionHub extends EventEmitter {
     return map;
   }
 
+  _trackPendingResources(resources, options = {}) {
+    if (!Array.isArray(resources)) return;
+    const now = Date.now();
+    for (const resource of resources) {
+      const existing = this._pendingResources.get(resource);
+      if (!existing) {
+        this._pendingResources.set(resource, { retryCount: 0, gaveUp: false, nextRetryAt: now + RESOURCE_RETRY_BASE_MS, requestOptions: options });
+      } else if (existing.gaveUp) {
+        // Revive a previously abandoned resource: a caller has explicitly asked
+        // for it again (e.g. reconnect re-derives missing preconditions, or a
+        // plugin route is hit again), so give it a fresh set of retries.
+        existing.gaveUp = false;
+        existing.retryCount = 0;
+        existing.nextRetryAt = now + RESOURCE_RETRY_BASE_MS;
+        existing.requestOptions = options;
+      } else if (Object.keys(options).length > 0) {
+        existing.requestOptions = options;
+      }
+    }
+    if (this._requestResourcesCallback && this._hasActivePendingResources()) this._ensureResourceRetryLoop();
+  }
+
+  _fulfillResource(resource) {
+    this._pendingResources.delete(resource);
+    if (!this._hasActivePendingResources()) this._stopResourceRetryLoop();
+  }
+
+  _hasActivePendingResources() {
+    for (const info of this._pendingResources.values()) {
+      if (!info.gaveUp) return true;
+    }
+    return false;
+  }
+
+  _ensureResourceRetryLoop() {
+    if (this._resourceRetryTimer) return;
+    this._resourceRetryTimer = setInterval(() => {
+      const now = Date.now();
+      const toRetry = [];
+      for (const [resource, info] of this._pendingResources) {
+        if (info.gaveUp) continue;
+        if (now >= info.nextRetryAt) {
+          toRetry.push(resource);
+        }
+      }
+
+      if (toRetry.length > 0 && this._requestResourcesCallback) {
+        logger.warn(`[Hub] Retrying unfulfilled resources: ${toRetry.join(', ')}`);
+        const groupedRetries = new Map();
+        for (const resource of toRetry) {
+          const info = this._pendingResources.get(resource);
+          const options = info?.requestOptions || {};
+          const key = JSON.stringify(options);
+          if (!groupedRetries.has(key)) groupedRetries.set(key, { resources: [], options });
+          groupedRetries.get(key).resources.push(resource);
+        }
+        // Only count the attempt as a retry when the request actually left for
+        // OWLCMS. While disconnected the callback is a no-op, so we must not
+        // burn through the retry budget and abandon resources that were never
+        // truly requested.
+        for (const { resources, options } of groupedRetries.values()) {
+          const sent = this._requestResourcesCallback(resources, options);
+          if (!sent) continue;
+          for (const resource of resources) {
+            const info = this._pendingResources.get(resource);
+            if (!info) continue;
+            info.retryCount++;
+            if (info.retryCount >= RESOURCE_MAX_RETRIES) {
+              info.gaveUp = true;
+              logger.error(`[Hub] Giving up on resource '${resource}' after ${info.retryCount} retries (will retry if requested again)`);
+            } else {
+              // Exponential backoff capped at MAX_BACKOFF so slow large payloads
+              // are not re-requested while still in transit.
+              const backoff = Math.min(
+                RESOURCE_RETRY_BASE_MS * 2 ** info.retryCount,
+                RESOURCE_RETRY_MAX_BACKOFF_MS
+              );
+              info.nextRetryAt = now + backoff;
+            }
+          }
+        }
+      }
+
+      // Stop spinning once nothing is left actively retrying. Abandoned
+      // (gaveUp) entries are kept so they can be revived by a later request.
+      if (!this._hasActivePendingResources()) this._stopResourceRetryLoop();
+    }, RESOURCE_RETRY_POLL_MS);
+  }
+
+  _stopResourceRetryLoop() {
+    if (!this._resourceRetryTimer) return;
+    clearInterval(this._resourceRetryTimer);
+    this._resourceRetryTimer = null;
+  }
+
   refresh() {
     logger.log('[Hub] Forcing refresh - clearing ALL state (database, session, translations, flags)');
     // If OWLCMS disconnected, any previously latched protocol mismatch is no longer actionable.
@@ -2978,6 +3161,8 @@ export class CompetitionHub extends EventEmitter {
     this.state = null;
     this.databaseState = null;
     this.fopUpdates = {};
+    this._pendingResources.clear();
+    this._stopResourceRetryLoop();
     this.databaseAthleteIndex = new Map();
     this.databaseTeamMap = new Map();
     this.lastDatabaseChecksum = null;
