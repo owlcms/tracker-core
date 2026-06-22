@@ -1,5 +1,9 @@
 Release Notes
 
+## Version 1.16.0
+- 1.16.0: Redid the resource request loop to handle retries
+- 1.16.0: Fixes for timer message handling and deduplication
+
 ## Version 1.5
 - 1.15.15: record attempt vs new
 - 1.15.14: break timers
