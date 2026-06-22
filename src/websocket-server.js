@@ -333,7 +333,11 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 		return { close: () => wss?.close() };
 	}
 	
-	wss = new WebSocketServer({ noServer: true });
+	wss = new WebSocketServer({
+		noServer: true,
+		pingInterval: 10000, // send ping every 10s to detect ghost connections
+		pingTimeout: 5000,   // terminate if pong not received within 5s
+	});
 	if (!configuredUpdateKey()) {
 		logger.warn('[WebSocket] OWLCMS_UPDATEKEY is not configured; running without WebSocket authentication');
 	}
@@ -660,6 +664,14 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 		if (pathname !== wsPath) {
 			logger.debug(`[WebSocket] Ignoring upgrade for ${pathname} (expected ${wsPath})`);
 			return; // Allow other upgrade listeners (e.g., Vite HMR) to handle
+		}
+
+		if (activeConnection !== null && activeConnection.readyState === 1 /* OPEN */) {
+			const remote = request.socket.remoteAddress;
+			logger.warn(`[WebSocket] Rejecting second connection from ${remote} — active OWLCMS connection already exists`);
+			socket.write('HTTP/1.1 409 Conflict\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nWebSocket already connected\r\n');
+			socket.destroy();
+			return;
 		}
 
 		logger.debug(`[WebSocket] Handling upgrade for ${wsPath}`);

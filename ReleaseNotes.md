@@ -1,6 +1,9 @@
 Release Notes
 
-## Version 1.16.0
+## Version 1.16
+- 1.16.1: Reject second connection
+  - if misconfigured developer instance, it will get ignored
+  - reduced websocket ping-pong delays to close connection within 15s if proxy drops OWLCMS but keeps tracker
 - 1.16.0: Redid the resource request loop to handle retries
 - 1.16.0: Fixes for timer message handling and deduplication
 
