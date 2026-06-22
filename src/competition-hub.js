@@ -223,13 +223,14 @@ function buildBroadcastDebounceKey(message) {
 
   if (message.type === 'timer') {
     const timer = message.timer || {};
+    const breakTimer = message.breakTimer || {};
     const signature = [
       'timer',
       message.displayMode || '',
       timer.state || '',
-      timer.breakState || '',
+      breakTimer.state || timer.breakState || '',
       timer.timeRemaining ?? '',
-      timer.breakRemaining ?? ''
+      breakTimer.timeRemaining ?? timer.breakRemaining ?? ''
     ].join(':');
     return { fopName, eventType: signature, debounceKey: `${fopName}-${signature}` };
   }
@@ -284,16 +285,7 @@ function shouldLogCompetitionUpdate(params = {}) {
 
 function restoreBreakStartTimeIfNeeded(mergedState, existingState, now) {
   const reportedBreakStartMillis = parseOptionalMillis(mergedState?.breakStartTimeMillis ?? mergedState?.breakStartTime);
-  if (reportedBreakStartMillis !== null && reportedBreakStartMillis > 0) {
-    return;
-  }
-
   const existingBreakStartMillis = parseOptionalMillis(existingState?.breakStartTimeMillis ?? existingState?.breakStartTime);
-  if (existingBreakStartMillis !== null && existingBreakStartMillis > 0) {
-    mergedState.breakStartTimeMillis = String(existingBreakStartMillis);
-    return;
-  }
-
   const breakRemainingMillis = parseOptionalMillis(mergedState?.breakMillisRemaining);
   if (breakRemainingMillis === null || breakRemainingMillis <= 0) {
     return;
@@ -309,6 +301,18 @@ function restoreBreakStartTimeIfNeeded(mergedState, existingState, now) {
   const isSessionDone = mode === 'SESSION_DONE';
   const inBreakState = !breakPaused && !athleteTimerStarting && !isCeremony
     && (fopState === 'BREAK' || breakEvent.includes('start') || breakEvent === 'breakstarted' || isSessionDone);
+
+  const explicitBreakStart = breakEvent.includes('start') || breakEvent === 'breakstarted';
+  const continuingBreak = inBreakState && isIncomingBreakState(existingState);
+
+  if (continuingBreak && !explicitBreakStart && existingBreakStartMillis !== null && existingBreakStartMillis > 0) {
+    mergedState.breakStartTimeMillis = String(existingBreakStartMillis);
+    return;
+  }
+
+  if (reportedBreakStartMillis !== null && reportedBreakStartMillis > 0) {
+    return;
+  }
 
   if (inBreakState) {
     mergedState.breakStartTimeMillis = String(now);
@@ -732,8 +736,8 @@ export class CompetitionHub extends EventEmitter {
         }
         // logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
         // logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
-        this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
-        this.emit('timer', { fop: fopName, timer: timerPayload, displayMode, timestamp: Date.now() });
+        this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
+        this.emit('timer', { fop: fopName, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
       }
       // Decision events send minimal payload but include computed displayMode for full context
       else if (messageType === 'decision') {

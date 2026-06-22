@@ -86,9 +86,14 @@ export function extractTimers(fopUpdate, language = 'en') {
 	// Subtracting the elapsed time since athleteStartTimeMillis yields the true remaining.
 	const athleteStartMillis = parseInt(fopUpdate?.athleteStartTimeMillis || 0);
 	let athleteLiveRemaining = athleteTimeRemaining;
+	// Absolute wall-clock instant at which the running timer reaches zero. This is the
+	// authoritative anchor: unlike timeRemaining (a snapshot that gets frozen by the
+	// API response cache between OWLCMS messages), endTimeMillis stays correct so a
+	// client joining or reloading mid-timer can recompute the true remaining time.
+	let athleteEndMillis = null;
 	if (athleteState === 'running' && athleteStartMillis > 0 && athleteTimeRemaining > 0) {
-		const expectedEnd = athleteStartMillis + athleteTimeRemaining;
-		athleteLiveRemaining = Math.max(0, expectedEnd - Date.now());
+		athleteEndMillis = athleteStartMillis + athleteTimeRemaining;
+		athleteLiveRemaining = Math.max(0, athleteEndMillis - Date.now());
 	}
 
 	const athleteTimer = {
@@ -100,7 +105,8 @@ export function extractTimers(fopUpdate, language = 'en') {
 		duration: athleteDuration,
 		initialWarningMillis,
 		finalWarningMillis,
-		startTime: athleteStartMillis || null
+		startTime: athleteStartMillis || null,
+		endTimeMillis: athleteEndMillis
 	};
 
 	// Break timer state
@@ -134,6 +140,9 @@ export function extractTimers(fopUpdate, language = 'en') {
 	// Compute remaining milliseconds using reported timing data
 	let computedBreakRemaining = 0;
 	let breakDisplayText = null;  // Text to display instead of time (e.g., "STOP" / "STOPP")
+	// Absolute wall-clock instant at which the break reaches zero. Authoritative anchor
+	// that survives the API response cache (see athleteEndMillis above).
+	let breakEndMillis = null;
 
 	// Check if this is an INTERRUPTION mode break
 	if (mode === 'INTERRUPTION' && inBreakState) {
@@ -143,16 +152,16 @@ export function extractTimers(fopUpdate, language = 'en') {
 		// Normal break with countdown
 		if (breakRemainingReported > 0 && breakStartMillisReported > 0) {
 			// We have current timing: compute remaining based on start + duration
-			const expectedEnd = breakStartMillisReported + breakRemainingReported;
+			breakEndMillis = breakStartMillisReported + breakRemainingReported;
 			const now = Date.now();
-			computedBreakRemaining = Math.max(0, expectedEnd - now);
+			computedBreakRemaining = Math.max(0, breakEndMillis - now);
 		} else if (!breakRemainingReported && breakStartMillisReported > 0) {
 			// We have persisted start time but no remaining duration reported
 			// Estimate: assume 600000ms (10 minutes) duration
-			const now = Date.now();
-			const elapsed = now - breakStartMillisReported;
 			const assumedDuration = 600000;
-			computedBreakRemaining = Math.max(0, assumedDuration - elapsed);
+			breakEndMillis = breakStartMillisReported + assumedDuration;
+			const now = Date.now();
+			computedBreakRemaining = Math.max(0, breakEndMillis - now);
 		}
 		// Otherwise computedBreakRemaining stays 0 (no timing data available)
 	}
@@ -165,6 +174,7 @@ export function extractTimers(fopUpdate, language = 'en') {
 		timeRemaining: computedBreakRemaining,    // 0 if no timing data
 		duration: breakRemainingReported || parseInt(fopUpdate?.breakTimeAllowed || fopUpdate?.timeAllowed || 600000),
 		startTime: breakStartMillisReported || null,
+		endTimeMillis: breakEndMillis,
 		displayText: breakDisplayText  // "STOP"/"STOPP" for INTERRUPTION mode, null otherwise
 	};
 
