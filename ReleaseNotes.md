@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.16
+- 1.16.2: Break and athlete timers now carry an absolute `endTimeMillis` anchor so a reload mid-timer shows the true remaining time instead of the cache-frozen snapshot (notably for indefinite/before-introduction breaks)
 - 1.16.1: Reject second connection
   - if misconfigured developer instance, it will get ignored
   - reduced websocket ping-pong delays to close connection within 15s if proxy drops OWLCMS but keeps tracker
