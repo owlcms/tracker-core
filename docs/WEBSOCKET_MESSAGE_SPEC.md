@@ -728,9 +728,12 @@ When the tracker needs additional data before processing messages, it returns a 
   "status": 428,
   "message": "Precondition Required: Missing required data",
   "reason": "missing_preconditions",
+  "refresh": false,
   "missing": ["database", "flags_zip", "logos_zip", "translations_zip"]
 }
 ```
+
+`refresh` is optional and defaults to `false`, except that OWLCMS treats an older request with no `refresh` property and `missing: ["database"]` as a refresh for backward compatibility. When `refresh: true`, OWLCMS should invalidate any cached static resource packages before satisfying the request. Database refresh requests set `refresh: true`; database payloads are always generated from the current competition state.
 
 **Preconditions:**
 

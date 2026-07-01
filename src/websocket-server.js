@@ -114,7 +114,7 @@ export function closeConnection() {
 	}
 }
 
-function sendPreconditionRequest({ missing, message, reason, logLabel }) {
+function sendPreconditionRequest({ missing, message, reason, logLabel, refresh = false }) {
 	if (!activeConnection || activeConnection.readyState !== 1) {
 		logger.warn(`[WebSocket] Cannot request ${logLabel} - no active OWLCMS connection`);
 		return false;
@@ -125,10 +125,12 @@ function sendPreconditionRequest({ missing, message, reason, logLabel }) {
 	}
 
 	logger.info(`[WebSocket] ${message}: ${missing.join(', ')}`);
+	// refresh=true asks OWLCMS to refresh the cached resources before responding.
 	activeConnection.send(JSON.stringify({
 		status: 428,
 		message,
 		reason,
+		refresh: Boolean(refresh),
 		missing: toOwlcmsMissingList(missing)
 	}));
 	return true;
@@ -147,7 +149,8 @@ export function requestDatabaseRefresh() {
 		missing: ['database'],
 		message: 'Precondition Required: Fresh database requested',
 		reason: 'database_refresh',
-		logLabel: 'database refresh'
+		logLabel: 'database refresh',
+		refresh: true
 	});
 }
 
@@ -165,7 +168,8 @@ export function requestResources(resources, options = {}) {
 		missing: resources,
 		message: options.message || 'Precondition Required: Plugin needs resources',
 		reason: options.reason || 'plugin_preconditions',
-		logLabel: options.logLabel || 'resources'
+		logLabel: options.logLabel || 'resources',
+		refresh: options.refresh === true
 	});
 }
 
