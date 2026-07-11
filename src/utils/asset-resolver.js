@@ -37,15 +37,27 @@ function getAssetConfig() {
  */
 function resolveCandidateFilePath(candidateNames, baseDir, urlPrefix) {
   for (const candidateName of candidateNames) {
-    for (const ext of FLAG_EXTENSIONS) {
-      const fileName = `${candidateName}${ext}`;
-      const fullPath = path.join(baseDir, fileName);
-      try {
-        if (fs.existsSync(fullPath)) return `${urlPrefix}/${fileName}`;
-      } catch (e) {
-        continue;
+    for (const extension of FLAG_EXTENSIONS) {
+      const fileName = `${candidateName}${extension}`;
+      if (fs.existsSync(path.join(baseDir, fileName))) {
+        return `${urlPrefix}/${fileName}`;
       }
     }
+  }
+
+  const normalizedCandidates = new Set(candidateNames.map(candidateName => candidateName.toLowerCase()));
+  try {
+    for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+
+      const parsedName = path.parse(entry.name);
+      if (!FLAG_EXTENSIONS.includes(parsedName.ext.toLowerCase())) continue;
+      if (normalizedCandidates.has(parsedName.name.toLowerCase())) {
+        return `${urlPrefix}/${entry.name}`;
+      }
+    }
+  } catch (e) {
+    return null;
   }
 
   return null;
