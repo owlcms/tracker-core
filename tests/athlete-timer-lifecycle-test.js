@@ -84,6 +84,11 @@ assert.equal(down.timer.timeRemaining, 55625, 'down signal must not mutate the f
 assert.equal(down.decision.visible, true, 'down signal should own the display');
 assert.equal(down.displayMode, 'decision', 'down signal should switch display mode to decision');
 
+let fullDecisionEvent = null;
+hub.once('decision', (eventData) => {
+  fullDecisionEvent = eventData;
+});
+
 hub.handleOwlcmsMessage({
   fop: 'A',
   fopState: 'DECISION_VISIBLE',
@@ -100,6 +105,10 @@ const fullDecision = currentTimerState();
 assert.equal(fullDecision.timer.timeRemaining, 55625, 'full decision must not mutate the frozen athlete timer');
 assert.equal(fullDecision.decision.visible, true, 'full decision should own the display');
 assert.equal(fullDecision.displayMode, 'decision', 'full decision should keep decision display mode');
+assert.equal(fullDecisionEvent.data.fop, 'A', 'decision SSE event must include the merged FOP snapshot');
+assert.equal(fullDecisionEvent.data.fopState, 'DECISION_VISIBLE', 'decision SSE snapshot must expose the visible decision state');
+assert.equal(fullDecisionEvent.data.decisionEventType, 'FULL_DECISION', 'decision SSE snapshot must retain the event type');
+assert.equal(fullDecisionEvent.data.athleteMillisRemaining, '55625', 'decision SSE snapshot must retain preceding FOP state');
 
 hub.handleOwlcmsMessage({
   fop: 'A',

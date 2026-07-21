@@ -736,8 +736,8 @@ export class CompetitionHub extends EventEmitter {
         }
         // logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
         // logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
-        this.broadcast({ type: 'timer', fop: fopName, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
-        this.emit('timer', { fop: fopName, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
+        this.broadcast({ type: 'timer', fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
+        this.emit('timer', { fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
       }
       // Decision events send minimal payload but include computed displayMode for full context
       else if (messageType === 'decision') {
@@ -772,8 +772,8 @@ export class CompetitionHub extends EventEmitter {
           logger.info(`[Hub] Decision ${fopName}: ${decisionPayload.type} ref1=${decisionPayload.ref1} ref2=${decisionPayload.ref2} ref3=${decisionPayload.ref3}`);
         }
         // logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
-        this.broadcast({ type: 'decision', fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
-        this.emit('decision', { fop: fopName, decision: decisionPayload, displayMode, timestamp: Date.now() });
+        this.broadcast({ type: 'decision', fop: fopName, data: mergedState, decision: decisionPayload, displayMode, timestamp: Date.now() });
+        this.emit('decision', { fop: fopName, data: mergedState, decision: decisionPayload, displayMode, timestamp: Date.now() });
       }
       // Regular updates broadcast fop_update with full data
       else {
@@ -785,12 +785,12 @@ export class CompetitionHub extends EventEmitter {
         this.broadcast({
           type: 'fop_update',
           fop: fopName,
-          data: normalizedParams,
+          data: mergedState,
           timestamp: Date.now()
         });
         this.emit('fop_update', {
           fop: fopName,
-          data: normalizedParams,
+          data: mergedState,
           timestamp: Date.now()
         });
       }
