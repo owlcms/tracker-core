@@ -395,13 +395,8 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			// Per-connection state: preload document logos once after the first real database load.
 			let hasRequestedStartupLogos = false;
 
-			function hasLoadedAthleteDatabase() {
-				const databaseState = hubInstance?.getDatabaseState?.();
-				return Array.isArray(databaseState?.athletes) && databaseState.athletes.length > 0;
-			}
-
 			function requestDocumentLogosOnce(source) {
-				if (hasRequestedStartupLogos || hubInstance?.logosLoaded || !hasLoadedAthleteDatabase()) {
+				if (hasRequestedStartupLogos || hubInstance?.logosLoaded) {
 					return;
 				}
 
