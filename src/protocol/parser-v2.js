@@ -173,7 +173,8 @@ function normalizeV2Championship(championship) {
   //   teamPoints1st/2nd/3rd, mensBestN, womensBestN,
   //   mixedMensBestN, mixedWomensBestN, mixedBestN,
   //   explicitTeamSize, maxTeamSize, maxPerCategory,
-  //   explicitMixedTeamMembers, teamScoringSystem, mixedTeamScoringSystem
+  //   explicitMixedTeamMembers, genderedTeamsEnabled, mixedTeamEnabled,
+  //   teamScoringSystem, mixedTeamScoringSystem
   //
   // Spread preserves any unknown future fields added by OWLCMS.
   return {
@@ -197,6 +198,7 @@ function normalizeV2Championship(championship) {
     maxTeamSize: championship.maxTeamSize ?? null,
     maxPerCategory: championship.maxPerCategory ?? null,
     explicitMixedTeamMembers: championship.explicitMixedTeamMembers ?? null,
+    genderedTeamsEnabled: championship.genderedTeamsEnabled ?? true,
     mixedTeamEnabled: championship.mixedTeamEnabled ?? false,
     teamScoringSystem: championship.teamScoringSystem ?? null,
     mixedTeamScoringSystem: championship.mixedTeamScoringSystem ?? null

@@ -1,5 +1,8 @@
 Release Notes
 
+## Version 1.17
+- 1.17.0: Some data fields for team championship formats were missing.
+
 ## Version 1.16
 - 1.16.5: Make detection of new records easier in the merged state
 - 1.16.4: Correctly derive case-sensitive asset URLs.  Perform case-insensitive match but return the correct case.
