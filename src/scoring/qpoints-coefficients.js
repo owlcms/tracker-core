@@ -71,9 +71,9 @@ export function getQPointsFactor(bodyWeight, gender, age = 0) {
 
 	let factor = 0;
 	if (gender === 'M') {
-		factor = qPointsFactor(bodyWeight, QPOINTS_COEFFICIENTS.men);
+		factor = qPointsFactor(Math.max(bodyWeight, 45), QPOINTS_COEFFICIENTS.men);
 	} else if (gender === 'F') {
-		factor = qPointsFactor(bodyWeight, QPOINTS_COEFFICIENTS.women);
+		factor = qPointsFactor(Math.max(bodyWeight, 40), QPOINTS_COEFFICIENTS.women);
 	} else {
 		return 0;
 	}
