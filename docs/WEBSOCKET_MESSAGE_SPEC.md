@@ -265,6 +265,7 @@ UPDATE messages also include ordering arrays that reference athletes by key:
 - Jury-decision-specific fields when `decisionEventType="JURY_DECISION"`:
   - `juryDecision` - `GOOD_LIFT` or `BAD_LIFT`
   - `juryReversal` - Boolean indicating whether the jury reversed the original result
+  - `juryReasonCode` - IWF rejection reason code (`1`..`17`) when `juryDecision=BAD_LIFT` and the jury selected a reason; absent otherwise. Text is the `Jury.incorrect.<code>` translation key
   - `athleteFull` - Athlete full name
   - `athleteAbbreviated` - Athlete abbreviated name
   - `waitForAnnouncer` - Boolean indicating whether announcer confirmation is still pending

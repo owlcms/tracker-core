@@ -760,6 +760,7 @@ export class CompetitionHub extends EventEmitter {
           attemptNumber: normalizedParams.attemptNumber || null,
           juryDecision: normalizedParams.juryDecision || null,
           juryReversal: normalizedParams.juryReversal || null,
+          juryReasonCode: normalizedParams.juryReasonCode || null,
           waitForAnnouncer: normalizedParams.waitForAnnouncer || null,
           recordKind: normalizedParams.recordKind || null,
           recordMessage: normalizedParams.recordMessage || null,

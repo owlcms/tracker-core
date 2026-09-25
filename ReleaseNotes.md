@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.17
+- 1.17.2: Accept a new jury decision field (juryReasonCode) to match OWLCMS 68 (if present)
 - 1.17.1: Q-Points were not clamped to the lightest meaningful weight, and yielded 0 for extremely light athletes
 - 1.17.0: Some data fields for team championship formats were missing.
 
