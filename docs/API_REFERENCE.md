@@ -36,7 +36,7 @@ Unknown future fields sent by OWLCMS are preserved via object spread.
 
 **Package:** `@owlcms/tracker-core`
 
-This document provides a complete reference for all APIs exposed by the Tracker Core package.
+This document provides examples and reference material for the Tracker Core package.
 
 ## Scoring Helpers
 
@@ -125,7 +125,7 @@ All URL-producing helpers (e.g., `getFlagUrl`, `getLogoUrl`, `getFlagUrl()` util
 
 The tracker writes OWLCMS-delivered ZIP contents under a configurable base directory on disk.
 
-- Default: `<process.cwd()>/local`
+- Configure the directory before using asset URL or HTML helpers.
 - Configurable via `setLocalFilesDir({ localFilesDir })` or websocket options
 - Subdirectories: `flags/`, `logos/`, `pictures/`, `styles/`
 
@@ -142,8 +142,9 @@ Returns the complete competition database received from OWLCMS.
 ```javascript
 const db = competitionHub.getDatabaseState();
 // {
-//   competition: { name, mensTeamSize, womensTeamSize, sinclair, fops },
+//   competition: { name, mensTeamSize, womensTeamSize, sinclair },
 //   athletes: [...],
+//   fops: [...],
 //   teams: [...],
 //   ageGroups: [...],
 //   records: [...],
@@ -259,8 +260,8 @@ const current = competitionHub.getCurrentAthlete({ fopName: 'Platform A' });
 //   sinclair: "285.432",
 //   classname: "current blink",
 //   currentWeight: 120,
-//   currentAttempt: "1/6",
-//   currentLiftType: "CLEANJERK",
+//   currentAttempt: 1,
+//   currentLiftType: "cleanJerk",
 //   ...
 // }
 ```
@@ -285,8 +286,8 @@ const next = competitionHub.getNextAthlete({ fopName: 'Platform A' });
 //   fullName: "SMITH, Jane",
 //   teamName: "CAN Weightlifting",
 //   currentWeight: 95,
-//   currentAttempt: "2/6",
-//   currentLiftType: "SNATCH",
+//   currentAttempt: 2,
+//   currentLiftType: "snatch",
 //   ...
 // }
 ```
@@ -311,8 +312,8 @@ const previous = competitionHub.getPreviousAthlete({ fopName: 'Platform A' });
 //   fullName: "JONES, Bob",
 //   teamName: "GBR Weightlifting",
 //   currentWeight: 110,
-//   currentAttempt: "3/6",
-//   currentLiftType: "SNATCH",
+//   currentAttempt: 3,
+//   currentLiftType: "snatch",
 //   ...
 // }
 ```
@@ -321,8 +322,8 @@ const previous = competitionHub.getPreviousAthlete({ fopName: 'Platform A' });
 
 **Note:** All three methods (`getCurrentAthlete`, `getNextAthlete`, `getPreviousAthlete`) return enriched athlete objects with:
 - `currentWeight` - The weight being attempted/requested
-- `currentAttempt` - Attempt number as formatted string (e.g., "1/6", "4/6")
-- `currentLiftType` - "SNATCH" or "CLEANJERK"
+- `currentAttempt` - Attempt number within the lift (1, 2, or 3)
+- `currentLiftType` - `"snatch"` or `"cleanJerk"`
 - Plus all standard session athlete fields (name, team, attempts, totals, rankings, etc.)
 
 ---
@@ -385,7 +386,7 @@ const liftingOrder = competitionHub.getLiftingOrderEntries({
 
 #### `getTranslations({ locale })`
 
-Returns translation map for specified locale with fallback chain.
+Returns the translation map for the first available locale (exact, base language, then English).
 
 **Parameters:**
 - `locale` (string) - Locale code (e.g., "en", "fr", "fr-CA")
@@ -394,18 +395,13 @@ Returns translation map for specified locale with fallback chain.
 
 ```javascript
 const t = competitionHub.getTranslations({ locale: 'fr-CA' });
-// {
-//   "Start": "Démarrer",    // fr-CA override
-//   "Stop": "Arrêter",      // Fallback from "fr"
-//   "Athlete": "Athlète",
-//   ...
-// }
+// fr-CA map if present; otherwise fr, en, or {} when none are loaded
 ```
 
 **Fallback logic:**
-- `"fr-CA"` → Merge `"fr"` base + `"fr-CA"` overrides
-- `"en-GB"` → Merge `"en"` base + `"en-GB"` overrides
-- `"en"` → Base locale, no merge
+- `"fr-CA"` → Use `"fr-CA"` if present, otherwise `"fr"`, otherwise `"en"`
+- `"en-GB"` → Use `"en-GB"` if present, otherwise `"en"`
+- `"en"` → Use the English map if present
 
 **Usage:** Localize scoreboard labels and UI text.
 
@@ -487,7 +483,7 @@ const version = competitionHub.getFopStateVersion({ fopName: 'Platform A' });
 // 42
 
 // Use in cache keys
-const cacheKey = `${fopName}-v${version}-${gender}-${topN}`;
+const cacheKey = `Platform A-v${version}-M-10`;
 ```
 
 **Increments on:**
@@ -502,14 +498,14 @@ const cacheKey = `${fopName}-v${version}-${gender}-${topN}`;
 
 #### `getCategoryToAgeGroupMap()`
 
-Returns map of category codes to age group codes.
+Returns map of category codes to their parent age group objects.
 
-**Returns:** `Map<string, string>`
+**Returns:** `Map<string, Object>`
 
 ```javascript
 const catMap = competitionHub.getCategoryToAgeGroupMap();
-catMap.get('SR_M89'); // "SR" (Senior)
-catMap.get('YTH_F64'); // "YTH" (Youth)
+catMap.get('SR_M89')?.code; // "SR" (Senior), if that category exists
+catMap.get('YTH_F64')?.code; // "YTH" (Youth), if that category exists
 ```
 
 **Usage:** Filter athletes by age group, group categories in results.
@@ -541,7 +537,7 @@ Notes:
 - This is a URL path you can put directly in an `<img src>`.
 - It is **not** a local filesystem path.
 - The returned URL is rooted at the configured `localUrlPrefix` (default: `/local`).
-- For backward compatibility, `getFlagPath({ teamName })` is an alias of `getFlagUrl({ teamName })`.
+- The exported `getFlagPath({ teamName })` utility returns a relative path without the leading `/`; use `getFlagUrl({ teamName })` for browser URLs.
 
 **Parameters:**
 - `teamName` (string) - Team/country name
@@ -549,8 +545,13 @@ Notes:
 **Returns:** `string | null`
 
 ```javascript
-const flagUrl = competitionHub.getFlagUrl({ teamName: 'USA Weightlifting' });
-// "/local/flags/USA Weightlifting.svg"
+import path from 'node:path';
+import { competitionHub } from '@owlcms/tracker-core';
+import { getFlagUrl } from '@owlcms/tracker-core/utils';
+
+competitionHub.setLocalFilesDir({ localFilesDir: path.join(process.cwd(), 'local') });
+const flagUrl = getFlagUrl({ teamName: 'USA Weightlifting' });
+// URL under /local/flags/ if a matching flag exists; otherwise null
 ```
 
 **Usage:** Display team flags in scoreboards.
@@ -565,7 +566,7 @@ Notes:
 - This is a URL path you can put directly in an `<img src>`.
 - It is **not** a local filesystem path.
 - The returned URL is rooted at the configured `localUrlPrefix` (default: `/local`).
-- For backward compatibility, `getLogoPath({ teamName })` is an alias of `getLogoUrl({ teamName })`.
+- Use the exported `getLogoUrl({ teamName })` utility from `@owlcms/tracker-core/utils`.
 
 ---
 
@@ -592,22 +593,21 @@ Configures the URL prefix under which local assets are served.
 ```javascript
 competitionHub.setLocalUrlPrefix({ prefix: '/assets' });
 
-// Now URL helpers return:
-competitionHub.getFlagUrl({ teamName: 'USA Weightlifting' });
-// "/assets/flags/USA Weightlifting.svg"
+// getFlagUrl({ teamName: 'USA Weightlifting' }) returns a URL under
+// /assets/flags/ if the flag exists (otherwise null).
 ```
 
 ---
 
 #### `getLocalFilesDir()`
 
-Returns the currently configured base directory on disk where OWLCMS ZIP payloads are extracted.
+Returns the configured base directory on disk where OWLCMS ZIP payloads are extracted, or `null` until configured.
 
-**Returns:** `string`
+**Returns:** `string | null`
 
 ```javascript
 const baseDir = competitionHub.getLocalFilesDir();
-// "<cwd>/local" (default)
+// null before setLocalFilesDir() is called
 ```
 
 ---
@@ -728,17 +728,15 @@ import { EVENT_TYPES } from '@owlcms/tracker-core';
 
 | Event Type | When Emitted | Payload |
 |------------|--------------|---------|
-| `EVENT_TYPES.DATABASE` | Full database received | `(databaseState)` |
-| `EVENT_TYPES.UPDATE` | Lifting order/athlete change | `({ fopName, payload })` |
-| `EVENT_TYPES.TIMER` | Timer start/stop/set | `({ fopName, payload })` |
-| `EVENT_TYPES.DECISION` | Referee decision | `({ fopName, payload })` |
-| `EVENT_TYPES.FLAGS_LOADED` | Flag images extracted | `(flagCount)` |
-| `EVENT_TYPES.LOGOS_LOADED` | Logo images extracted | `(logoCount)` |
-| `EVENT_TYPES.TRANSLATIONS_LOADED` | Translations loaded | `(localeCount)` |
+| `'fop_update'` | Lifting order/athlete change | `({ fop, data, timestamp })` |
+| `EVENT_TYPES.TIMER` | Timer start/stop/set | `({ fop, data, timer, breakTimer, displayMode, timestamp })` |
+| `EVENT_TYPES.DECISION` | Referee decision | `({ fop, data, decision, displayMode, timestamp })` |
+| `'flags_loaded'` | Flag images extracted | `({ count, timestamp })` |
+| `'logos_loaded'` | Logo images extracted | `({ count, timestamp })` |
 | `EVENT_TYPES.DATABASE_READY` | Database initialized | `()` |
 | `EVENT_TYPES.HUB_READY` | Hub fully initialized (database + translations) | `()` |
-| `EVENT_TYPES.SESSION_DONE` | Session completed | `({ fopName, sessionName })` |
-| `EVENT_TYPES.SESSION_REOPENED` | Session resumed after completion | `({ fopName, sessionName })` |
+
+Use `getSessionStatus({ fopName })` to check session completion; the hub does not emit `session:done` or `session:reopened` events.
 
 ### Event Subscription
 
@@ -751,12 +749,12 @@ competitionHub.once(EVENT_TYPES.HUB_READY, () => {
 });
 
 // Recurring events
-competitionHub.on(EVENT_TYPES.DECISION, ({ fopName, payload }) => {
-  console.log(`Decision on ${fopName}: ${payload.decisionEventType}`);
+competitionHub.on(EVENT_TYPES.DECISION, ({ fop, decision }) => {
+  console.log(`Decision on ${fop}: ${decision.type}`);
   
-  if (payload.decisionEventType === 'FULL_DECISION') {
-    const goodCount = [payload.d1, payload.d2, payload.d3]
-      .filter(d => d === 'true')
+  if (decision.type === 'FULL_DECISION') {
+    const goodCount = [decision.ref1, decision.ref2, decision.ref3]
+      .filter(d => d === 'good')
       .length;
     
     const isGoodLift = goodCount >= 2;
@@ -764,20 +762,16 @@ competitionHub.on(EVENT_TYPES.DECISION, ({ fopName, payload }) => {
   }
 });
 
-competitionHub.on(EVENT_TYPES.UPDATE, ({ fopName, payload }) => {
-  if (payload.uiEvent === 'LiftingOrderUpdated') {
-    console.log(`New current athlete: ${payload.fullName}`);
+competitionHub.on('fop_update', ({ data }) => {
+  if (data.uiEvent === 'LiftingOrderUpdated') {
+    console.log(`New current athlete: ${data.fullName}`);
   }
 });
 
-competitionHub.on(EVENT_TYPES.TIMER, (fopName, payload) => {
-  if (payload.athleteTimerEventType === 'StartTime') {
-    console.log(`Timer started: ${payload.athleteMillisRemaining}ms`);
+competitionHub.on(EVENT_TYPES.TIMER, ({ fop, data, timer }) => {
+  if (data.athleteTimerEventType === 'StartTime') {
+    console.log(`Timer started on ${fop}: ${timer.timeRemaining}ms`);
   }
-});
-
-competitionHub.on(EVENT_TYPES.SESSION_DONE, (fopName, sessionName) => {
-  console.log(`Session "${sessionName}" on ${fopName} is complete`);
 });
 ```
 
@@ -787,18 +781,15 @@ competitionHub.on(EVENT_TYPES.SESSION_DONE, (fopName, sessionName) => {
 
 ```javascript
 {
-  uiEvent: "LiftingOrderUpdated",
-  fopName: "Platform A",
-  competitionName: "2025 Nationals",
-  currentAthleteKey: "123",
-  nextAthleteKey: "124",
-  fullName: "DOE, John",
-  teamName: "USA Weightlifting",
-  attemptNumber: 2,
-  weight: 120,
-  sessionAthletes: [...],
-  startOrderAthletes: [...],
-  liftingOrderAthletes: [...]
+  fop: "Platform A",
+  data: {
+    uiEvent: "LiftingOrderUpdated",
+    currentAthleteKey: "123",
+    nextAthleteKey: "124",
+    fullName: "DOE, John",
+    sessionAthletes: []
+  },
+  timestamp: 1735689600000
 }
 ```
 
@@ -806,14 +797,12 @@ competitionHub.on(EVENT_TYPES.SESSION_DONE, (fopName, sessionName) => {
 
 ```javascript
 {
-  fopName: "Platform A",
-  athleteTimerEventType: "StartTime",  // "StartTime" | "StopTime" | "SetTime"
-  athleteMillisRemaining: 60000,
-  athleteStartTimeMillis: 1735689600000,
-  timeAllowed: 60000,
-  breakTimerEventType: null,  // Break timer (if active)
-  breakMillisRemaining: 0,
-  serverLocalTime: "14:23:45.123"
+  fop: "Platform A",
+  data: { athleteTimerEventType: "StartTime", athleteMillisRemaining: 60000 },
+  timer: { state: "running", timeRemaining: 60000, duration: 60000 },
+  breakTimer: { state: "stopped", timeRemaining: 0 },
+  displayMode: "athlete",
+  timestamp: 1735689600000
 }
 ```
 
@@ -821,15 +810,11 @@ competitionHub.on(EVENT_TYPES.SESSION_DONE, (fopName, sessionName) => {
 
 ```javascript
 {
-  fopName: "Platform A",
-  decisionEventType: "FULL_DECISION",  // "FULL_DECISION" | "DOWN_SIGNAL" | "RESET"
-  fullName: "DOE, John",
-  attemptNumber: 2,
-  d1: "true",   // Referee 1: "true" | "false" | null
-  d2: "true",   // Referee 2
-  d3: "false",  // Referee 3
-  decisionsVisible: "true",
-  down: "true"
+  fop: "Platform A",
+  data: { decisionEventType: "FULL_DECISION", d1: "true", d2: "true", d3: "false" },
+  decision: { type: "FULL_DECISION", ref1: "good", ref2: "good", ref3: "bad", visible: true },
+  displayMode: "decision",
+  timestamp: 1735689600000
 }
 ```
 
@@ -844,21 +829,20 @@ The hub package includes WebSocket server functionality to receive messages from
 Creates its own HTTP server for WebSocket connections.
 
 ```javascript
+import path from 'node:path';
 import { competitionHub } from '@owlcms/tracker-core';
 import { createWebSocketServer } from '@owlcms/tracker-core/websocket';
 
-createWebSocketServer({
+await createWebSocketServer({
   port: 8095,
   path: '/ws',
   hub: competitionHub,
+  localFilesDir: path.join(process.cwd(), 'local'),
   onConnect: (ws) => {
     console.log('[WebSocket] OWLCMS connected');
   },
   onDisconnect: () => {
     console.log('[WebSocket] OWLCMS disconnected');
-  },
-  onMessage: (message) => {
-    console.log('[WebSocket] Received:', message.type);
   },
   onError: (error) => {
     console.error('[WebSocket] Error:', error);
@@ -879,6 +863,7 @@ Attach WebSocket handler to an existing Express/HTTP server.
 ```javascript
 import express from 'express';
 import { createServer } from 'http';
+import path from 'node:path';
 import { competitionHub } from '@owlcms/tracker-core';
 import { attachWebSocketToServer } from '@owlcms/tracker-core/websocket';
 
@@ -905,6 +890,7 @@ attachWebSocketToServer({
   server: httpServer,
   path: '/ws',
   hub: competitionHub,
+  localFilesDir: path.join(process.cwd(), 'local'),
   onConnect: () => console.log('[WebSocket] OWLCMS connected'),
   onDisconnect: () => console.log('[WebSocket] OWLCMS disconnected')
 });
@@ -923,6 +909,8 @@ httpServer.listen(8095, () => {
 
 These helpers send a 428-style precondition request back to OWLCMS over the
 active WebSocket connection.
+Direct imports below assume the same module instance owns the WebSocket connection;
+see the connection ownership note below when using a bundler.
 
 #### `requestDatabaseRefresh()`
 
@@ -987,7 +975,7 @@ Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:
   //   - pictures_zip -> <localFilesDir>/pictures
   //   - styles     -> <localFilesDir>/styles
   // The consumer must serve these files at URL path: <localUrlPrefix>/*
-  // Default (if omitted): path.join(process.cwd(), 'local')
+  // Set this explicitly before using asset URL helpers.
   localFilesDir: '/var/lib/owlcms-tracker/local',
 
   // The URL prefix under which the extracted local files are served.
@@ -1003,11 +991,7 @@ Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:
   // Callbacks
   onConnect: (ws) => {},         // Called when OWLCMS connects
   onDisconnect: () => {},        // Called when OWLCMS disconnects
-  onMessage: (message) => {},    // Called on every message (after hub processing)
-  onError: (error) => {},        // Called on WebSocket errors
-  
-  // Advanced
-  verifyClient: (info, cb) => {} // Custom connection verification
+  onError: (error) => {}         // Called on WebSocket errors
 }
 ```
 
@@ -1075,24 +1059,25 @@ Set to: `ws://your-server:8095/ws`
 ### Flag Resolver
 
 ```javascript
+import path from 'node:path';
+import { competitionHub } from '@owlcms/tracker-core';
 import { getFlagUrl, getFlagHtml } from '@owlcms/tracker-core/utils';
 
+competitionHub.setLocalFilesDir({ localFilesDir: path.join(process.cwd(), 'local') });
+
 // Get flag URL (returns null if not found)
-const flagUrl = getFlagUrl('USA Weightlifting');
-// "/local/flags/USA Weightlifting.svg"
+const flagUrl = getFlagUrl({ teamName: 'USA Weightlifting' });
 
 // Get flag as HTML img tag
 const flagHtml = getFlagHtml({ teamName: 'USA Weightlifting', width: 32, height: 24 });
-// '<img src="/local/flags/USA Weightlifting.svg" width="32" height="24" alt="USA Weightlifting" />'
+// Returns '' if no matching flag file is available.
 ```
 
 ---
 
 ### Scoring Formulas
 
-**Parameter style (future spec):**
-
-All public scoring functions accept a single object parameter (no positional arguments).
+The scoring functions below accept positional arguments.
 
 #### Sinclair
 
@@ -1107,16 +1092,12 @@ import {
 } from '@owlcms/tracker-core/scoring';
 
 const sinclair2024 = calculateSinclair2024(220, 88.5, 'M');
-// 285.432
 
 const sinclair2020 = calculateSinclair2020(220, 88.5, 'M');
-// 283.156
 
 const sinclair2028 = calculateSinclair2028(220, 88.5, 'M');
-// 279.091
 
 const configurableSinclair = calculateSinclair(220, 88.5, 'M', 2028);
-// 279.091
 
 // Masters age adjustment
 const ageFactor = getMastersAgeFactor(45, 'M');
@@ -1131,9 +1112,7 @@ const adjustedSinclair = calculateSinclairMasters(220, 88.5, 'M', 45, 2024);
 ```javascript
 import { calculateQPoints } from '@owlcms/tracker-core/scoring';
 
-// Preferred object form
-const qpoints = calculateQPoints({ total: 220, bodyWeight: 88.5, gender: 'M' });
-// 95.234
+const qpoints = calculateQPoints(220, 88.5, 'M');
 
 ```
 
@@ -1144,30 +1123,25 @@ const qpoints = calculateQPoints({ total: 220, bodyWeight: 88.5, gender: 'M' });
 ```javascript
 import { calculateGamx, Variant } from '@owlcms/tracker-core/scoring';
 
-// Preferred object form
-const gamx = calculateGamx({ total: 220, bodyWeight: 88.5, gender: 'M', variant: Variant.GAMX });
-// 512.34
-
-const gamx2 = calculateGamx({ total: 220, bodyWeight: 88.5, gender: 'M', variant: Variant.GAMX2 });
-// 523.45
-
+const gamx = calculateGamx('M', 80, 150); // defaults to Variant.SENIOR
+const gamxU = calculateGamx('M', 80, 150, Variant.U17, 15);
+const gamxA = calculateGamx('M', 80, 150, Variant.AGE_ADJUSTED, 15);
 ```
+
+The arguments are `gender`, `bodyMass` (kg), `total` (kg), optional `variant`, and optional `age` (years). `Variant.SENIOR` is standard GAMX; `Variant.U17` is GAMX-U; `Variant.AGE_ADJUSTED` is GAMX-A. Pass the athlete's age for U17 and AGE_ADJUSTED (and for `Variant.MASTERS`). The function returns `0` when required inputs or parameter tables are unavailable.
+
+OWLCMS supplies the parameter tables on demand as `gamx_zip`. Consumers must request that resource before calculating scores (for example, a tracker plugin declares `requires: ['gamx_zip']`). The scoring helper reads from `<process.cwd()>/local/gamx`; if the WebSocket integration uses a custom `localFilesDir`, its extracted GAMX tables will not be found there.
 
 ---
 
 ### Team Scoring
 
 ```javascript
-import { calculateTeamPoints } from '@owlcms/tracker-core/team';
+import { calculateTeamPoints } from '@owlcms/tracker-core/scoring';
 
-const teamPoints = calculateTeamPoints({
-  mensTeamSize: 5,      // Top 5 men count
-  womensTeamSize: 5,    // Top 5 women count
-  scoringMethod: 'sinclair',  // 'sinclair' | 'qpoints' | 'gamx'
-  athletes
-});
+const teamPoints = calculateTeamPoints(1, 220, true); // 28 points for a team member ranked first
 
-// Returns: { teamName: totalPoints, ... }
+// Arguments: rank, lifted weight, teamMember, optional points for ranks 1/2/3
 ```
 
 ---
@@ -1202,7 +1176,7 @@ const cacheKey = buildCacheKey({
     sortBy: 'sinclair'
   }
 });
-// "Platform_A-M-10-sinclair"
+// Includes the FOP name, data version, and normalized, sorted options.
 ```
 
 ---
@@ -1254,15 +1228,15 @@ import {
   extractTimers,
   extractDecisionState,
   extractTimerAndDecisionState
-} from '@owlcms/tracker-core/helpers';
+} from '@owlcms/tracker-core/utils';
 
 const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
 
 // Extract timer states (athlete + break)
-const timers = extractTimers(fopUpdate);
+const { timer, breakTimer } = extractTimers(fopUpdate);
 // {
-//   athlete: { state: "running", timeRemaining: 60000, duration: 60000 },
-//   break: { state: "stopped", timeRemaining: 0, duration: 0 }
+//   timer: { state: "running", timeRemaining: 60000, ... },
+//   breakTimer: { state: "stopped", timeRemaining: 0, ... }
 // }
 
 // Extract decision state
@@ -1270,7 +1244,8 @@ const decision = extractDecisionState(fopUpdate);
 // { type: "FULL_DECISION", visible: true }
 
 // Extract both at once
-const { timers, decision } = extractTimerAndDecisionState(fopUpdate);
+const state = extractTimerAndDecisionState(fopUpdate);
+// state.timer, state.breakTimer, state.decision, state.displayMode
 ```
 
 ---
@@ -1285,17 +1260,17 @@ import {
 } from '@owlcms/tracker-core/utils';
 
 const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
+const sessionStatus = competitionHub.getSessionStatus({ fopName: 'Platform A' });
 
-// Check if attempt bar should be shown
-const showAttemptBar = computeAttemptBarVisibility(fopUpdate);
-// true if timer running or athlete on platform
+// CSS class: '' (visible) or 'hide-because-null-session' (hidden)
+const visibilityClass = computeAttemptBarVisibility(fopUpdate);
 
 // Check if there's a current athlete
-const hasCurrent = hasCurrentAthlete(fopUpdate);
-// true if currentAthleteKey is set
+const hasCurrent = hasCurrentAthlete(fopUpdate, sessionStatus);
+// true if fullName is set, the FOP is active, and the session is not done
 
 // Log detailed debug info about attempt bar state (uses logger.debug)
-logAttemptBarDebug(fopUpdate);
+logAttemptBarDebug(fopUpdate, sessionStatus);
 ```
 
 ---
@@ -1305,15 +1280,19 @@ logAttemptBarDebug(fopUpdate);
 Helpers for scoreboard display: break messages, session info, attempt labels, and current athlete extraction. All functions that need translations accept a `hub` parameter with a `translate(key, locale)` method.
 
 ```javascript
+import path from 'node:path';
+import { competitionHub } from '@owlcms/tracker-core';
 import {
   isBreakMode,
   buildSessionInfo,
   buildAttemptLabel,
   inferGroupName,
   inferBreakMessage,
-  extractCurrentAttempt
+  extractCurrentAttempt,
+  getFlagUrl
 } from '@owlcms/tracker-core/utils';
 
+competitionHub.setLocalFilesDir({ localFilesDir: path.join(process.cwd(), 'local') });
 const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
 
 // Check if current mode is a break
@@ -1333,7 +1312,7 @@ const groupName = inferGroupName(fopUpdate, competitionHub, 'en');
 const breakMsg = inferBreakMessage('TECHNICAL', null, competitionHub, 'en');
 
 // Extract current attempt (or break info) for scoreboard overlays
-const current = extractCurrentAttempt(fopUpdate, competitionHub, getFlagUrl, 'en');
+const current = extractCurrentAttempt(fopUpdate, competitionHub, teamName => getFlagUrl({ teamName }), 'en');
 // Returns: { fullName, teamName, flagUrl, categoryName, attempt, weight, isBreak, ... }
 // Returns null if no current athlete and not in break mode
 ```
@@ -1352,16 +1331,12 @@ const current = extractCurrentAttempt(fopUpdate, competitionHub, getFlagUrl, 'en
 ### Records Extraction
 
 ```javascript
-import { extractRecordsFromUpdate } from '@owlcms/tracker-core/records';
+import { extractRecordsFromUpdate } from '@owlcms/tracker-core/utils';
 
 const fopUpdate = competitionHub.getFopUpdate({ fopName: 'Platform A' });
 
-// Get new records broken in current session
+// Get provisional records with a non-empty groupNameString (across events)
 const newRecords = extractRecordsFromUpdate(fopUpdate);
-// [
-//   { recordName: "National", recordLift: "SNATCH", recordValue: 125, athleteName: "DOE, John" },
-//   ...
-// ]
 ```
 
 ---
@@ -1370,7 +1345,7 @@ const newRecords = extractRecordsFromUpdate(fopUpdate);
 
 ### Database State
 
-Complete structure returned by `getDatabaseState()`:
+Representative V2 structure returned by `getDatabaseState()` (additional fields may be present):
 
 ```javascript
 {
@@ -1378,9 +1353,9 @@ Complete structure returned by `getDatabaseState()`:
     name: string,              // Competition name
     mensTeamSize: number,      // Top N athletes for men's team scoring
     womensTeamSize: number,    // Top N athletes for women's team scoring
-    sinclair: string,          // Scoring formula: "2020", "2024", etc.
-    fops: Array<string>        // FOP names: ["Platform A", "Platform B"]
+    sinclair: string           // Scoring formula: "2020", "2024", etc.
   },
+  fops: Array<{ name: string }>, // Normalized FOPs
   athletes: Array<{
     key: string | number,      // Unique athlete identifier (can be negative)
     firstName: string,
@@ -1475,7 +1450,7 @@ Complete structure returned by `getDatabaseState()`:
 
 ### FOP Update
 
-Complete structure returned by `getFopUpdate({ fopName })`:
+Representative structure returned by `getFopUpdate({ fopName })`; fields depend on the latest OWLCMS messages:
 
 ```javascript
 {
@@ -1560,7 +1535,7 @@ Complete structure returned by `getFopUpdate({ fopName })`:
 
 ### Session Athlete (Display-Ready)
 
-Athletes in `sessionAthletes`, `startOrderAthletes`, `liftingOrderAthletes` have these display fields:
+Athletes in `sessionAthletes`, `startOrderAthletes`, `liftingOrderAthletes` may include these display fields:
 
 ```javascript
 {
@@ -1616,11 +1591,9 @@ Athletes in `sessionAthletes`, `startOrderAthletes`, `liftingOrderAthletes` have
 ```javascript
 import express from 'express';
 import { createServer } from 'http';
-import { 
-  competitionHub, 
-  EVENT_TYPES,
-  attachWebSocketToServer 
-} from '@owlcms/tracker-core';
+import path from 'node:path';
+import { competitionHub, EVENT_TYPES } from '@owlcms/tracker-core';
+import { attachWebSocketToServer } from '@owlcms/tracker-core/websocket';
 
 const app = express();
 const httpServer = createServer(app);
@@ -1631,12 +1604,12 @@ competitionHub.once(EVENT_TYPES.HUB_READY, () => {
 });
 
 // React to decisions
-competitionHub.on(EVENT_TYPES.DECISION, (fopName, payload) => {
-  if (payload.decisionEventType === 'FULL_DECISION') {
-    const goodCount = [payload.d1, payload.d2, payload.d3]
-      .filter(d => d === 'true').length;
+competitionHub.on(EVENT_TYPES.DECISION, ({ fop, decision }) => {
+  if (decision.type === 'FULL_DECISION') {
+    const goodCount = [decision.ref1, decision.ref2, decision.ref3]
+      .filter(d => d === 'good').length;
     
-    console.log(`Decision on ${fopName}: ${goodCount >= 2 ? 'GOOD LIFT' : 'NO LIFT'}`);
+    console.log(`Decision on ${fop}: ${goodCount >= 2 ? 'GOOD LIFT' : 'NO LIFT'}`);
   }
 });
 
@@ -1664,6 +1637,7 @@ attachWebSocketToServer({
   server: httpServer,
   path: '/ws',
   hub: competitionHub,
+  localFilesDir: path.join(process.cwd(), 'local'),
   onConnect: () => console.log('OWLCMS connected'),
   onDisconnect: () => console.log('OWLCMS disconnected')
 });
