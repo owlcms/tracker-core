@@ -363,8 +363,11 @@ function normalizeV2Athlete(athlete, teamMap, categoryMap) {
     customRank: athlete.customRank,
     combinedRank: athlete.combinedRank,
     
-    // Participations - raw V2 fields (array with categoryCode)
-    participations: athlete.participations || [],
+    // Participations, with the registration category first
+    participations: orderParticipationsByRegistrationCategory(
+      athlete.participations,
+      athlete.categoryCode
+    ),
     
     // ===== DERIVED DATA (computed by tracker for convenience) =====
     
@@ -386,6 +389,28 @@ function normalizeV2Athlete(athlete, teamMap, categoryMap) {
     group: athlete.sessionName, // Alias for sessionName
     name: `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() // Alias for fullName
   };
+}
+
+function orderParticipationsByRegistrationCategory(participations, registrationCategoryCode) {
+  if (!Array.isArray(participations)) {
+    return [];
+  }
+  if (participations.length < 2 || !registrationCategoryCode) {
+    return participations;
+  }
+
+  const registrationIndex = participations.findIndex(
+    participation => participation.categoryCode === registrationCategoryCode
+  );
+  if (registrationIndex <= 0) {
+    return participations;
+  }
+
+  return [
+    participations[registrationIndex],
+    ...participations.slice(0, registrationIndex),
+    ...participations.slice(registrationIndex + 1)
+  ];
 }
 
 /**
@@ -434,11 +459,17 @@ function extractV2FOPs(platforms) {
  * @param {Array} dateArray - V2 date [year, month, day]
  * @returns {string} ISO date string
  */
-function formatV2Date(dateArray) {
-  if (!dateArray || !Array.isArray(dateArray) || dateArray.length < 3) {
+function formatV2Date(dateValue) {
+  if (typeof dateValue === 'string') {
+    const match = dateValue.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+    }
+  }
+  if (!Array.isArray(dateValue) || dateValue.length < 3) {
     return new Date().toISOString().split('T')[0];
   }
   
-  const [year, month, day] = dateArray;
+  const [year, month, day] = dateValue;
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }

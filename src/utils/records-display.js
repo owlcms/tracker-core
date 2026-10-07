@@ -19,12 +19,14 @@ const defaultFederationPriority = ['IWF'];
  * Format category display string
  * Replaces ">" prefix with "+" for superheavyweight categories
  * 
- * @param {string} category - Category string (e.g., ">87", "81", "F64")
- * @returns {string} Formatted category (e.g., "+87", "81", "F64")
+ * @param {string} category - Category string (e.g., ">87", "87+", "F64")
+ * @returns {string} Formatted category (e.g., "+87", "+87", "F64")
  */
 export function formatCategoryDisplay(category = '') {
   if (!category) return '';
-  return category.startsWith('>') ? `+${category.slice(1)}` : category;
+  return String(category)
+    .replace(/>\s*(\d+(?:\.\d+)?)/g, '+$1')
+    .replace(/(\d+(?:\.\d+)?)\s*\+/g, '+$1');
 }
 
 /**
