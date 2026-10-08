@@ -111,8 +111,9 @@ async function verifySanityAfterTranslations(hub) {
  * Parse and route binary message from OWLCMS
  * @param {Buffer} buffer - Binary frame data
  * @param {object} hub - CompetitionHub instance (injected)
+ * @param {object} metadata - Protocol metadata associated with this binary frame
  */
-export async function handleBinaryMessage(buffer, hub) {
+export async function handleBinaryMessage(buffer, hub, metadata = {}) {
 	const startTime = Date.now();
 	const operationId = Math.random().toString(36).substr(2, 9);
 
@@ -258,7 +259,7 @@ export async function handleBinaryMessage(buffer, hub) {
 		// to capture the actual parsed data, not just the raw binary
 		
 		if (messageType === 'database_zip' || messageType === 'database') {
-			await handleDatabaseZipMessage(payload, hub);
+			await handleDatabaseZipMessage(payload, hub, metadata);
 		} else if (messageType === 'flags_zip') {
 			await handleFlagsMessage(payload, hub);
 		} else if (messageType === 'flags') {
@@ -568,7 +569,7 @@ async function handleGamxMessage(zipBuffer, hub) {
  * Handle database ZIP message
  * @param {Buffer} zipBuffer - ZIP file buffer containing database JSON
  */
-async function handleDatabaseZipMessage(zipBuffer, hub) {
+async function handleDatabaseZipMessage(zipBuffer, hub, metadata = {}) {
 	const startTime = Date.now();
 	
 	logger.info(`[DATABASE_ZIP] Processing buffer: ${zipBuffer.length} bytes, first 4 bytes: ${zipBuffer.slice(0, 4).toString('hex')}`);
@@ -619,6 +620,10 @@ async function handleDatabaseZipMessage(zipBuffer, hub) {
 			// Extract and parse JSON
 			jsonText = dbEntry.getData().toString('utf8');
 			database = JSON.parse(jsonText);
+		}
+
+		if (metadata.databaseChecksum && !database.databaseChecksum) {
+			database.databaseChecksum = metadata.databaseChecksum;
 		}
 		
 		// Capture in learning mode (full database content, like main branch does)

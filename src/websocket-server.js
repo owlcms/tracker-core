@@ -394,6 +394,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 
 			// Per-connection state: preload document logos once after the first real database load.
 			let hasRequestedStartupLogos = false;
+			let pendingDatabaseChecksum = null;
 
 			function requestDocumentLogosOnce(source) {
 				if (hasRequestedStartupLogos || hubInstance?.logosLoaded) {
@@ -505,7 +506,12 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
 						flushAndResetOnce();
 					}
-					await handleBinaryMessage(binaryPayload, hubInstance);
+					const binaryMetadata = {};
+					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
+						binaryMetadata.databaseChecksum = pendingDatabaseChecksum;
+						pendingDatabaseChecksum = null;
+					}
+					await handleBinaryMessage(binaryPayload, hubInstance, binaryMetadata);
 					if (typeString && (typeString === 'database_zip' || typeString === 'database')) {
 						requestDocumentLogosOnce('binary');
 					}
@@ -590,6 +596,10 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					case 'database':
 						flushAndResetOnce();
 						result = await handleDatabaseMessage(message.payload);
+						break;
+					case 'database_metadata':
+						pendingDatabaseChecksum = message.payload.databaseChecksum || null;
+						result = { status: 200, message: 'Database metadata accepted' };
 						break;
 					case 'update':
 						result = await handleUpdateMessage(message.payload, hasBundledDatabase);
