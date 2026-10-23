@@ -1,6 +1,7 @@
 Release Notes
 
 ## Version 1.17
+- 1.17.4: Accept the database cache token (`databaseChecksum`) in a new `database_metadata` WebSocket message sent by OWLCMS just before the `database_zip` binary frame. It is retained per connection and attached to the next database ZIP, so duplicate-checksum suppression and plugin cache keys keep working while the ZIP only contains the exported `competition.json`.
 - 1.17.3: Athlete participations are reordered so `participations[0]` is always the registration category (session protocols were showing ranks from another participation)
 - 1.17.3: V2 competition dates sent as ISO strings (`2026-08-26`) both ISO strings and date arrays are now accepted
 - 1.17.3: `formatCategoryDisplay` normalizes open-ended categories to leading-plus notation for both `>110` and `110+` inputs (→ `+110`)
