@@ -10,9 +10,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { WebSocketServer } from 'ws';
 import { captureMessage, LEARNING_MODE } from './utils/learning-mode.js';
+import { startRecording } from './utils/protocol-recording.js';
 import { logger } from './utils/logger.js';
 import { extractEmbeddedDatabase } from './protocol/embedded-database.js';
-import { handleBinaryMessage } from './websocket/binary-handler.js';
+import { checkBinaryProtocol, handleBinaryMessage } from './websocket/binary-handler.js';
 import { extractAndValidateVersion } from './protocol/protocol-config.js';
 
 // Marker placed at the very end of a keyed binary frame by OWLCMS so we can detect
@@ -76,11 +77,27 @@ function toOwlcmsMissingList(missing) {
 	return [...new Set(missing.map(toOwlcmsMissingName))];
 }
 
+// Routine replies never ask OWLCMS to rebuild its cached resource archives.
+// Without an explicit refresh:false, OWLCMS treats a missing "database" as a refresh request.
+// The sender is told, but not disconnected: OWLCMS reconnects at once when the socket is closed.
+function sendProtocolRefusal(ws, reason, received) {
+	ws.send(JSON.stringify({
+		status: 400,
+		error: 'Protocol version check failed',
+		reason,
+		details: {
+			received,
+			info: 'Please ensure OWLCMS is configured with the correct tracker WebSocket URL and is up to date'
+		}
+	}));
+}
+
 function preconditionResponse({ message, reason, missing }) {
 	return {
 		status: 428,
 		message,
 		reason,
+		refresh: false,
 		missing: toOwlcmsMissingList(missing)
 	};
 }
@@ -180,7 +197,7 @@ export function requestResources(resources, options = {}) {
 async function purgeLocalAssetDirs(hub) {
 	try {
 		const baseDir = hub?.getLocalFilesDir?.() || path.join(process.cwd(), 'local');
-		const targets = ['flags', 'logos', 'pictures', 'styles', 'mappings'];
+		const targets = ['flags', 'logos', 'pictures', 'gamx', 'mappings'];
 		for (const dir of targets) {
 			const fullPath = path.join(baseDir, dir);
 			try {
@@ -356,6 +373,16 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 
 		wss.on('connection', (ws) => {
 			logger.info('[WebSocket] Client connected');
+			// learning mode: record every frame of this connection, both directions, in arrival order
+			const recording = startRecording();
+			if (recording) {
+				const send = ws.send.bind(ws);
+				ws.send = (data, ...rest) => {
+					recording.recordOut(data);
+					return send(data, ...rest);
+				};
+				ws.on('close', () => recording.close());
+			}
 			// Start purge immediately; message handling will await completion before processing any frames
 			const purgePromise = purgeLocalAssetDirs(hubInstance);
 			if (callbacks.onConnect) {
@@ -430,7 +457,6 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 							hubInstance.flagsLoaded = false;
 							hubInstance.logosLoaded = false;
 							if (hubInstance.picturesLoaded !== undefined) hubInstance.picturesLoaded = false;
-							if (hubInstance.stylesLoaded !== undefined) hubInstance.stylesLoaded = false;
 							if (hubInstance.gamxLoaded !== undefined) hubInstance.gamxLoaded = false;
 							// Optionally clear any other relevant state here
 							logger.info('[WebSocket] First connection: hub state reset, flags/pictures cleared');
@@ -443,6 +469,8 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 
 			// Use raw message event which provides both data and a flag for isBinary
 			ws.on('message', async (data, isBinary) => {
+				// recorded on arrival, before any await, so the recording keeps the arrival order
+				recording?.recordIn(data, isBinary);
 				// Ensure purge completes before handling any incoming frames
 				if (purgePromise) {
 					try {
@@ -477,8 +505,14 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			}
 			
 			if (isBinary) {
-				// Binary frame: [4-byte big-endian typeLength][type UTF-8][binary payload]
+				// Binary frame: [4-byte versionLength][version][4-byte typeLength][type UTF-8][binary payload]
 				try {
+					// Refuse before anything is flushed or captured, so an old sender cannot wipe the loaded database
+					const protocolRefusal = checkBinaryProtocol(binaryPayload, hubInstance);
+					if (protocolRefusal) {
+						sendProtocolRefusal(ws, protocolRefusal.reason, protocolRefusal.received);
+						return;
+					}
 					if (process.env.BINARY_DEBUG === 'true') {
 						logger.debug('[WebSocket] Binary frame received, routing to binary handler');
 					}
@@ -560,15 +594,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					} catch (e) {
 						// Non-fatal: UI surfacing only
 					}
-					ws.send(JSON.stringify({
-						status: 400,
-						error: 'Protocol version check failed',
-						reason: versionCheck.error,
-						details: {
-							received: versionCheck.version,
-							info: 'Please ensure OWLCMS is configured with the correct tracker WebSocket URL and is up to date'
-						}
-					}));
+					sendProtocolRefusal(ws, versionCheck.error, versionCheck.version);
 					return;
 				}
 				logger.debug(`[WebSocket] ✅ Protocol version validated: ${versionCheck.version}`);
@@ -791,16 +817,9 @@ async function handleUpdateMessage(payload, hasBundledDatabase = false) {
 	const uiEvent = payload.uiEvent || '';
 
 	const result = hubInstance.handleOwlcmsMessage(payload, 'update');
-	const missing = hubInstance.getMissingPreconditions();
-
-	// Always check for missing preconditions and request them
-	if (missing.length > 0) {
-		logger.warn(`[WebSocket] Update processed but missing preconditions: ${missing.join(', ')}`);
-		return preconditionResponse({
-			message: 'Precondition Required: Missing required data',
-			reason: 'missing_preconditions',
-			missing
-		});
+	const latched = startupLatchResponse('Update');
+	if (latched) {
+		return latched;
 	}
 
 	if (hasBundledDatabase) {
@@ -815,16 +834,9 @@ async function handleUpdateMessage(payload, hasBundledDatabase = false) {
  */
 async function handleTimerMessage(payload, hasBundledDatabase = false) {
 	const result = hubInstance.handleOwlcmsMessage(payload, 'timer');
-	const missing = hubInstance.getMissingPreconditions();
-
-	// Request missing preconditions (database and/or translations)
-	if (missing.length > 0) {
-		logger.warn(`[WebSocket] Timer received but missing: ${missing.join(', ')}`);
-		return preconditionResponse({
-			message: 'Precondition Required: Missing required data',
-			reason: 'missing_preconditions',
-			missing
-		});
+	const latched = startupLatchResponse('Timer');
+	if (latched) {
+		return latched;
 	}
 
 	return mapHubResultToResponse(result, 'timer');
@@ -835,16 +847,9 @@ async function handleTimerMessage(payload, hasBundledDatabase = false) {
  */
 async function handleDecisionMessage(payload, hasBundledDatabase = false) {
 	const result = hubInstance.handleOwlcmsMessage(payload, 'decision');
-	const missing = hubInstance.getMissingPreconditions();
-
-	// Request missing preconditions (database and/or translations)
-	if (missing.length > 0) {
-		logger.warn(`[WebSocket] Decision received but missing: ${missing.join(', ')}`);
-		return preconditionResponse({
-			message: 'Precondition Required: Missing required data',
-			reason: 'missing_preconditions',
-			missing
-		});
+	const latched = startupLatchResponse('Decision');
+	if (latched) {
+		return latched;
 	}
 
 	return mapHubResultToResponse(result, 'decision');
@@ -887,15 +892,37 @@ function mapHubResultToResponse(result, messageType) {
 	}
 
 	if (result.needsData) {
-		const missing = hubInstance.getMissingPreconditions();
-		return preconditionResponse({
-			message: 'Precondition Required: Missing required data',
-			reason: 'missing_preconditions',
-			missing
-		});
+		return startupLatchResponse(capitalize(messageType)) || { status: 200, message: `${capitalize(messageType)} processed` };
 	}
 
 	return { status: 500, message: result.reason || `Unable to process ${messageType}` };
+}
+
+/**
+ * Answer while the start latch is closed (database or translations not yet received), null once it is open.
+ * The missing resources are asked for once (428); while that request is outstanding the answer is 202, so OWLCMS
+ * does not send them again. The message itself has been applied either way.
+ */
+function startupLatchResponse(label) {
+	const latch = hubInstance.startupLatch();
+	if (latch.ready) {
+		return null;
+	}
+	if (latch.request.length > 0) {
+		logger.warn(`[WebSocket] ${label} processed, requesting startup data: ${latch.request.join(', ')}`);
+		return preconditionResponse({
+			message: 'Precondition Required: Missing required data',
+			reason: 'missing_preconditions',
+			missing: latch.request
+		});
+	}
+	logger.debug(`[WebSocket] ${label} processed, waiting for startup data: ${latch.waitingFor.join(', ')}`);
+	return {
+		status: 202,
+		message: `${label} processed, waiting for startup data`,
+		reason: 'waiting_for_startup_data',
+		waitingFor: toOwlcmsMissingList(latch.waitingFor)
+	};
 }
 
 /**
@@ -908,13 +935,9 @@ function capitalize(value) {
 async function handleGenericMessage(payload, hasBundledDatabase, type) {
 	if (!hubInstance.getDatabaseState() && !hasBundledDatabase) {
 		logger.warn(`[WebSocket] ${type} message received but no database - requesting database`);
-		const interimResult = hubInstance.handleOwlcmsMessage(payload, type || 'generic');
-		const missing = hubInstance.getMissingPreconditions();
-		return preconditionResponse({
-			message: 'Precondition Required: Missing required data',
-			reason: interimResult?.reason || 'no_database_state',
-			missing
-		});
+		hubInstance.handleOwlcmsMessage(payload, type || 'generic');
+		return startupLatchResponse(capitalize(type || 'message'))
+			|| { status: 200, message: `${capitalize(type || 'message')} processed` };
 	}
 
 	const result = hubInstance.handleOwlcmsMessage(payload, type || 'generic');

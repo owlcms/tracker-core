@@ -13,7 +13,7 @@
 import { EventEmitter } from 'events';
 import path from 'path';
 import { logLearningModeStatus } from './utils/learning-mode.js';
-import { parseV2Database } from './protocol/parser-v2.js';
+import { extractV2Year, parseV2Database } from './protocol/parser-v2.js';
 import { logger } from './utils/logger.js';
 import { extractTimers, computeDisplayMode, extractDecisionState } from './utils/timer-decision-helpers.js';
 
@@ -22,7 +22,8 @@ import { extractTimers, computeDisplayMode, extractDecisionState } from './utils
 // (actually-sent) retries back off exponentially from BASE up to MAX_BACKOFF so
 // large, legitimately-slow payloads are not re-requested while in transit.
 const RESOURCE_RETRY_POLL_MS = 1000;
-const RESOURCE_RETRY_BASE_MS = 5000;
+// first re-request of a resource OWLCMS has not delivered (large archives take a few seconds to build)
+const RESOURCE_RETRY_BASE_MS = 10000;
 const RESOURCE_RETRY_MAX_BACKOFF_MS = 30000;
 const RESOURCE_MAX_RETRIES = 12;
 
@@ -41,6 +42,31 @@ function formatTimerMillis(value) {
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   return `${minutes}:${seconds}`;
 }
+
+// Decision message types for jury votes and review votes (OWLCMS 69): they never replace decisionEventType.
+const JURY_EVENT_TYPES = new Set(['JURY_UPDATE', 'PANEL_VOTE_CALLED', 'PANEL_VOTE', 'JURY_DISPLAY_RESET']);
+
+// Referee decision fields of the legacy decision payload.
+const LEGACY_DECISION_FIELDS = ['decisionEventType', 'd1', 'd2', 'd3', 'decision', 'decisionsVisible', 'down'];
+
+/**
+ * Base language of a regional locale ('fr' for 'fr_CA' or 'fr-CA'), or null for a base locale.
+ * OWLCMS sends Java locale strings with underscores; hyphens are accepted too.
+ */
+function localeBaseLanguage(locale) {
+  const match = String(locale || '').match(/^([^-_]+)[-_]/);
+  return match ? match[1] : null;
+}
+
+// Hub event emitted when each resource arrives, used to wait for refreshed copies.
+const REFRESH_EVENTS = {
+  database: 'database:received',
+  translations_zip: 'translations_loaded',
+  flags_zip: 'flags_loaded',
+  logos_zip: 'logos_loaded',
+  pictures_zip: 'pictures_loaded',
+  gamx_zip: 'gamx_loaded'
+};
 
 const ATHLETE_TIMER_FIELDS = [
   'athleteTimerEventType',
@@ -113,10 +139,27 @@ function clearStaleDecisionForExplicitAthleteTimer(mergedState, normalizedParams
     return;
   }
 
-  for (const field of ['decisionEventType', 'd1', 'd2', 'd3', 'decision', 'decisionsVisible', 'down']) {
+  for (const field of [...LEGACY_DECISION_FIELDS, 'juryEventType', 'adjudicationDecision', 'adjudicationDecisionReceivedAt']) {
     if (!hasOwn(normalizedParams, field)) {
       delete mergedState[field];
     }
+  }
+}
+
+/**
+ * decisionState: keep the newest by sequence (a late, older state must not replace a newer one).
+ * adjudicationDecision: remember when it arrived so plugins can time the jury card.
+ */
+function mergeDecisionStateAndAdjudication(mergedState, normalizedParams, existingState, now) {
+  const incoming = normalizedParams?.decisionState;
+  const existing = existingState?.decisionState;
+  if (incoming && existing
+      && Number.isFinite(Number(incoming.sequence)) && Number.isFinite(Number(existing.sequence))
+      && Number(incoming.sequence) < Number(existing.sequence)) {
+    mergedState.decisionState = existing;
+  }
+  if (normalizedParams?.adjudicationDecision) {
+    mergedState.adjudicationDecisionReceivedAt = now;
   }
 }
 
@@ -129,7 +172,7 @@ function clearStaleDecisionForCurrentAthleteUpdate(mergedState, normalizedParams
     return;
   }
 
-  for (const field of ['decisionEventType', 'd1', 'd2', 'd3', 'decision', 'decisionsVisible', 'down']) {
+  for (const field of LEGACY_DECISION_FIELDS) {
     if (!hasOwn(normalizedParams, field)) {
       delete mergedState[field];
     }
@@ -319,6 +362,32 @@ function restoreBreakStartTimeIfNeeded(mergedState, existingState, now) {
   }
 }
 
+function updateBreakEndTime(mergedState, normalizedParams, existingState, now, messageType) {
+  const indefinite = mergedState.indefiniteBreak === true || mergedState.indefiniteBreak === 'true';
+  if (!isIncomingBreakState(mergedState) || indefinite || mergedState.breakTimerEventType !== 'BreakStarted') {
+    delete mergedState.breakEndTimeMillis;
+    return;
+  }
+
+  const start = parseOptionalMillis(mergedState.breakStartTimeMillis);
+  const remaining = parseOptionalMillis(mergedState.breakMillisRemaining);
+  if (start === null || remaining === null) {
+    return;
+  }
+  if (messageType === 'timer' && normalizedParams.breakTimerEventType === 'BreakStarted') {
+    mergedState.breakEndTimeMillis = start + remaining;
+  } else if (start === parseOptionalMillis(existingState.breakStartTimeMillis)
+      && mergedState.breakType === existingState.breakType
+      && existingState.breakTimerEventType === 'BreakStarted'
+      && existingState.breakEndTimeMillis != null) {
+    mergedState.breakEndTimeMillis = existingState.breakEndTimeMillis;
+  } else if (messageType === 'update' && hasOwn(normalizedParams, 'breakMillisRemaining')) {
+    // Updates carry live remaining time, whereas the timer frame carries the
+    // duration at start. A mid-break initial snapshot must be anchored at receipt.
+    mergedState.breakEndTimeMillis = now + remaining;
+  }
+}
+
 export class CompetitionHub extends EventEmitter {
   constructor() {
     super();
@@ -505,7 +574,12 @@ export class CompetitionHub extends EventEmitter {
       logger.error('[Hub] Cannot request resources - callback not set');
       return false;
     }
-    return this._requestResourcesCallback(resources, options);
+    // A resource already requested is not asked for again: the retry loop re-requests it if it does not arrive.
+    const toSend = options.refresh === true ? resources : resources.filter(r => !this._isRequestInFlight(r));
+    if (toSend.length === 0) return true;
+    const sent = this._requestResourcesCallback(toSend, options);
+    if (sent) this._markRequested(toSend);
+    return sent;
   }
 
   /**
@@ -529,7 +603,28 @@ export class CompetitionHub extends EventEmitter {
       reason: 'startup_preconditions',
       logLabel: 'startup resources'
     });
+    // OWLCMS sends them on every new connection: count that as the request, so the start latch does not ask again
+    this._markRequested(missing);
     return true;
+  }
+
+  /**
+   * Start latch: the tracker cannot run until the database and the translations have arrived.
+   *
+   * Called when answering an OWLCMS message. The first answer asks for the missing startup resources (428); later
+   * answers do not ask again while the request is outstanding (202 waiting), so OWLCMS sends each resource once. The
+   * retry loop asks again if a resource does not arrive.
+   *
+   * @returns {{ready: boolean, request: string[], waitingFor: string[]}} request: resources to ask for in this answer
+   */
+  startupLatch() {
+    const waitingFor = this.getMissingPreconditions();
+    if (waitingFor.length === 0) {
+      return { ready: true, request: [], waitingFor };
+    }
+    const request = waitingFor.filter(r => !this._isRequestInFlight(r));
+    this._markRequested(request);
+    return { ready: false, request, waitingFor };
   }
 
   /**
@@ -576,19 +671,25 @@ export class CompetitionHub extends EventEmitter {
         return { accepted: false, reason: 'database_loading', retry: true };
       }
       
-      // Check if we recently requested database via 428 (within last 1 second) - wait for it to arrive
-      const timeSinceDatabaseRequested = Date.now() - this.databaseRequested;
-      if (this.databaseRequested > 0 && timeSinceDatabaseRequested < 1000) {
-        logger.log(`[Hub] Database was requested ${timeSinceDatabaseRequested}ms ago, waiting for arrival (returning 202)`);
-        return { accepted: false, reason: 'waiting_for_database', retry: true };
-      }
-      
       // Extract FOP name early so we can process the update even if we need database
       const fopName = params.fop || params.fopName || 'A';
       this._hasConfirmedFops = true;
       
       // Normalize payload (parse JSON strings, ensure arrays)
       const normalizedParams = this._sanitizeInboundPayload(params);
+
+      // Jury and review-vote messages (OWLCMS 69) only carry jury information: their type goes in juryEventType and
+      // their copy of the referee decision fields is dropped, so decisionEventType keeps the last referee decision
+      // (FULL_DECISION etc.) for plugins such as Celebrations and OBS.
+      const juryEventType = messageType === 'decision' && JURY_EVENT_TYPES.has(normalizedParams.decisionEventType)
+        ? normalizedParams.decisionEventType
+        : null;
+      if (juryEventType) {
+        for (const field of LEGACY_DECISION_FIELDS) {
+          delete normalizedParams[field];
+        }
+        normalizedParams.juryEventType = juryEventType;
+      }
 
       // Store/merge the update data regardless of database state
       // This ensures we have current athlete, timer, etc. even while waiting for database
@@ -631,7 +732,11 @@ export class CompetitionHub extends EventEmitter {
           'd2',
           'd3',
           'decisionsVisible',
-          'down'
+          'down',
+          'juryEventType',
+          'decisionState',
+          'adjudicationDecision',
+          'adjudicationDecisionReceivedAt'
         ];
         
         // Start with incoming data as the base (this ensures missing fields become undefined/null)
@@ -672,6 +777,7 @@ export class CompetitionHub extends EventEmitter {
         return { accepted: true, suppressed: 'duplicate_stop' };
       }
 
+      mergeDecisionStateAndAdjudication(mergedState, normalizedParams, existingState, now);
       preserveAthleteTimerUnlessExplicit(mergedState, normalizedParams, existingState, messageType);
       clearStaleDecisionForExplicitAthleteTimer(mergedState, normalizedParams, messageType);
       clearStaleDecisionForCurrentAthleteUpdate(mergedState, normalizedParams, messageType);
@@ -679,6 +785,7 @@ export class CompetitionHub extends EventEmitter {
       snapshotStoppedAthleteTimerIfNeeded(mergedState, normalizedParams, existingState, now, messageType);
       clearNonRunningAthleteStartTime(mergedState, normalizedParams, messageType);
       restoreBreakStartTimeIfNeeded(mergedState, existingState, now);
+      updateBreakEndTime(mergedState, normalizedParams, existingState, now, messageType);
       this._applyAthleteWarningFallbacks(mergedState);
       
       this.fopUpdates[fopName] = mergedState;
@@ -748,8 +855,9 @@ export class CompetitionHub extends EventEmitter {
         const decisionEventType = normalizedParams.decisionEventType || 'decision';
         
         // Use extracted decision state (has ref1/ref2/ref3 mapped to 'good'/'bad'/null)
+        // Jury and review-vote messages are announced with their own type (never as a repeated referee decision).
         const decisionPayload = {
-          type: decision.type,
+          type: juryEventType || decision.type,
           ref1: decision.ref1,
           ref2: decision.ref2,
           ref3: decision.ref3,
@@ -766,7 +874,9 @@ export class CompetitionHub extends EventEmitter {
           recordMessage: normalizedParams.recordMessage || null,
           actualLift: normalizedParams.actualLift || null,
           athleteFull: normalizedParams.athleteFull || null,
-          athleteAbbreviated: normalizedParams.athleteAbbreviated || null
+          athleteAbbreviated: normalizedParams.athleteAbbreviated || null,
+          decisionState: decision.decisionState,
+          adjudicationDecision: normalizedParams.adjudicationDecision || null
         };
         // Log only the meaningful FULL_DECISION (not the down signal or initial phase).
         if (decisionEventType === 'FULL_DECISION') {
@@ -851,6 +961,7 @@ export class CompetitionHub extends EventEmitter {
         logger.log(`[Hub] Database checksum ${incomingChecksum} matches current state, skipping reload`);
         this.databaseRequested = 0;
         this.lastDatabaseLoad = Date.now();
+        this.emit('database:received', { cached: true });
         return { accepted: true, reason: 'duplicate_checksum', cached: true };
       }
       
@@ -865,6 +976,7 @@ export class CompetitionHub extends EventEmitter {
         const timeSinceLastLoad = Date.now() - this.lastDatabaseLoad;
         if (this.lastDatabaseLoad > 0 && timeSinceLastLoad < 2000) {
           logger.log(`[Hub] Database was loaded ${Math.round(timeSinceLastLoad)}ms ago (no checksum provided), accepting but skipping duplicate load`);
+          this.emit('database:received', { cached: true });
           return { accepted: true, reason: 'duplicate_skipped', cached: true };
         }
       }
@@ -954,6 +1066,7 @@ export class CompetitionHub extends EventEmitter {
       
       // ✅ Signal all waiters that database is ready (handles JSON, binary, and empty+binary paths)
       this.emit('database:ready');
+      this.emit('database:received', { cached: false });
       
       // Check if hub is now fully ready (database + translations)
       if (this.isReady()) {
@@ -1053,7 +1166,6 @@ export class CompetitionHub extends EventEmitter {
       showSinclairRank: params.showSinclairRank === 'true',
       wideTeamNames: params.wideTeamNames === 'true',
       sinclairMeet: params.sinclairMeet === 'true',
-      stylesDir: params.stylesDir,
       mode: params.mode
     };
 
@@ -1344,7 +1456,6 @@ export class CompetitionHub extends EventEmitter {
           if (!this.gamxLoaded) missing.push('gamx_zip');
           break;
         // database and translations_zip are handled by getMissingPreconditions()
-        // styles is NOT sent by OWLCMS
       }
     }
     
@@ -1480,6 +1591,124 @@ export class CompetitionHub extends EventEmitter {
     logger.info(`[Hub] Ensuring preconditions: ${requires.join(', ')} (missing: ${missing.join(', ')})`);
     return this.requestPluginPreconditions(missing, timeoutMs);
   }
+
+  /**
+   * Ask OWLCMS for fresh copies of resources and wait for them to arrive.
+   *
+   * Sends a single 428 with refresh:true, so OWLCMS rebuilds its cached archives
+   * before answering; the database is always exported from current state.
+   * Waits for the database and translations, which OWLCMS always sends. Archives
+   * (flags, logos, pictures, GAMX) are waited for only when already loaded: OWLCMS
+   * does not send empty archives, so waiting for one never received would always
+   * time out. They are still requested.
+   *
+   * @param {Array<string>} resources - e.g. ['database', 'logos_zip', 'flags_zip']
+   * @param {object} [options]
+   * @param {number} [options.timeoutMs=10000] - Maximum time to wait
+   * @returns {Promise<{sent: boolean, received: string[], timedOut: string[]}>}
+   */
+  async refreshResources(resources = ['database'], { timeoutMs = 10000 } = {}) {
+    const requested = [...new Set(resources.filter(r => REFRESH_EVENTS[r]))];
+    if (requested.length === 0) {
+      return { sent: false, received: [], timedOut: [] };
+    }
+
+    const awaited = requested.filter(r => r === 'database' || r === 'translations_zip' || this._isResourceLoaded(r));
+    const remaining = new Set(awaited);
+    const received = [];
+    const listeners = new Map();
+    let finish;
+    const done = new Promise(resolve => { finish = resolve; });
+
+    for (const resource of awaited) {
+      const listener = () => {
+        if (!remaining.delete(resource)) return;
+        received.push(resource);
+        if (remaining.size === 0) finish();
+      };
+      listeners.set(resource, listener);
+      this.on(REFRESH_EVENTS[resource], listener);
+    }
+
+    const startTime = Date.now();
+    let sent = false;
+    try {
+      // Retry only while no OWLCMS connection is available; once sent, a single
+      // refresh request is enough (each one makes OWLCMS rebuild its archives).
+      while (!sent && Date.now() - startTime < timeoutMs) {
+        sent = typeof this._requestResourcesCallback === 'function'
+          && this._requestResourcesCallback(requested, {
+            message: 'Precondition Required: Fresh resources requested',
+            reason: 'resource_refresh',
+            logLabel: 'resource refresh',
+            refresh: true
+          });
+        if (!sent) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      if (sent && remaining.size > 0) {
+        const waitMs = Math.max(0, timeoutMs - (Date.now() - startTime));
+        let timer;
+        await Promise.race([
+          done,
+          new Promise(resolve => { timer = setTimeout(resolve, waitMs); })
+        ]);
+        clearTimeout(timer);
+      }
+    } finally {
+      for (const [resource, listener] of listeners) {
+        this.removeListener(REFRESH_EVENTS[resource], listener);
+      }
+    }
+
+    const timedOut = [...remaining];
+    if (!sent) {
+      logger.warn(`[Hub] Resource refresh not sent (no OWLCMS connection): ${requested.join(', ')}`);
+    } else if (timedOut.length > 0) {
+      logger.warn(`[Hub] Resource refresh timed out after ${timeoutMs}ms waiting for: ${timedOut.join(', ')}`);
+    } else {
+      logger.info(`[Hub] Resource refresh complete: ${requested.join(', ')}`);
+    }
+    return { sent, received, timedOut };
+  }
+
+  /**
+   * Refresh everything the tracker currently holds: database, translations and flags,
+   * plus logos, pictures and GAMX tables when they have been loaded.
+   * Keeps the OWLCMS connection open (unlike closeConnection()).
+   *
+   * @param {object} [options]
+   * @param {number} [options.timeoutMs=10000] - Maximum time to wait
+   * @returns {Promise<{sent: boolean, received: string[], timedOut: string[]}>}
+   */
+  async requestFullRefresh({ timeoutMs = 10000 } = {}) {
+    const resources = ['database', 'translations_zip', 'flags_zip'];
+    if (this.logosLoaded) resources.push('logos_zip');
+    if (this.picturesLoaded) resources.push('pictures_zip');
+    if (this.gamxLoaded) resources.push('gamx_zip');
+    return this.refreshResources(resources, { timeoutMs });
+  }
+
+  _isResourceLoaded(resource) {
+    switch (resource) {
+      case 'database':
+        return Boolean(this.databaseState?.athletes?.length);
+      case 'translations_zip':
+        return Boolean(this.translationsReady);
+      case 'flags_zip':
+        return Boolean(this.flagsLoaded);
+      case 'logos_zip':
+        return Boolean(this.logosLoaded);
+      case 'pictures_zip':
+        return Boolean(this.picturesLoaded);
+      case 'gamx_zip':
+        return Boolean(this.gamxLoaded);
+      default:
+        return false;
+    }
+  }
   
   /**
    * Get the latest UPDATE message for a specific FOP
@@ -1488,6 +1717,11 @@ export class CompetitionHub extends EventEmitter {
    * @returns {Object|null} Latest update data with precomputed liftingOrderAthletes, sessionAthletes, etc.
    */
   getFopUpdate({ fopName = 'A' } = {}) {
+    // Pages draw from this state: until the database and the translations have both arrived, they would show
+    // untranslated keys (!Group_number). Withhold it until the hub is ready; hub_ready then makes them fetch again.
+    if (!this.isReady()) {
+      return null;
+    }
     return this.fopUpdates[fopName] || null;
   }
 
@@ -1624,6 +1858,22 @@ export class CompetitionHub extends EventEmitter {
 
   _incrementFopVersion(fopName) {
     this._fopVersions[fopName] = (this._fopVersions[fopName] || 0) + 1;
+  }
+
+  /**
+   * Invalidate every cache keyed by FOP: the API response cache (getFopStateVersion) and the plugin caches
+   * (buildCacheKey, which uses each FOP's lastDataUpdate). For changes that affect all pages without a FOP update.
+   */
+  _invalidateAllFopCaches() {
+    const now = Date.now();
+    const knownFops = Object.keys(this.fopUpdates);
+    for (const fopName of knownFops.length > 0 ? knownFops : ['A']) {
+      this._incrementFopVersion(fopName);
+      const fopUpdate = this.fopUpdates[fopName];
+      if (fopUpdate) {
+        fopUpdate.lastDataUpdate = Math.max(now, (fopUpdate.lastDataUpdate || 0) + 1);
+      }
+    }
   }
   
   /**
@@ -1966,7 +2216,9 @@ export class CompetitionHub extends EventEmitter {
       'startOrderAthletes',
       'liftingOrderAthletes',
       'leaders',
-      'records'
+      'records',
+      'decisionState',
+      'adjudicationDecision'
     ];
 
     for (const field of jsonFields) {
@@ -2148,8 +2400,8 @@ export class CompetitionHub extends EventEmitter {
 
       // Fallback: Compute yearOfBirth from fullBirthDate if OWLCMS didn't provide it
       if (!flat.yearOfBirth && flat.fullBirthDate) {
-        const year = flat.fullBirthDate.substring(0, 4);
-        if (year && year.length === 4) {
+        const year = extractV2Year(flat.fullBirthDate);
+        if (year) {
           flat.yearOfBirth = year;
         }
       }
@@ -2733,9 +2985,9 @@ export class CompetitionHub extends EventEmitter {
     
     const isNew = !this.translations[locale];
     
-    // 1. Extract base locale from regional variant (e.g., 'fr' from 'fr-CA')
+    // 1. Extract base locale from regional variant (e.g., 'fr' from 'fr_CA'; OWLCMS uses '_', '-' also accepted)
     const localeStr = String(locale || 'en');
-    const baseLocale = localeStr.includes('-') ? localeStr.split('-')[0] : null;
+    const baseLocale = localeBaseLanguage(localeStr);
     
     // 2. If this is a regional variant, merge with base locale if available
     let mergedMap = decodedMap;
@@ -2780,11 +3032,11 @@ export class CompetitionHub extends EventEmitter {
     
     // 3. If this is a base locale, update all existing regional variants to include these keys
     if (!baseLocale) {
-      // This is a base locale (e.g., 'fr'), so update all regional variants (e.g., 'fr-CA', 'fr-BE')
+      // This is a base locale (e.g., 'fr'), so update all regional variants (e.g., 'fr_CA', 'fr_BE')
       const currentLocales = Object.keys(this.translations);
       const updatedRegionals = [];
       for (const existingLocale of currentLocales) {
-        if (existingLocale.startsWith(locale + '-')) {
+        if (localeBaseLanguage(existingLocale) === locale) {
           // This is a regional variant of the locale just cached
           const regionalTranslations = this.translations[existingLocale];
           const updatedRegional = { ...decodedMap, ...regionalTranslations };
@@ -2808,6 +3060,9 @@ export class CompetitionHub extends EventEmitter {
       this.translationsReady = true;
       this._fulfillResource('translations_zip');
       logger.log(`[Hub] ✅ Translations loaded: ${Object.keys(this.translations).length} locales`);
+
+      // Pages and plugin caches built before the translations hold untranslated keys: invalidate them
+      this._invalidateAllFopCaches();
       
       // Check if hub is now fully ready (database + translations)
       if (this.isReady()) {
@@ -2927,10 +3182,13 @@ export class CompetitionHub extends EventEmitter {
 
   /**
    * Get cached translations for a specific locale
+   * OWLCMS sends locale keys with underscores ('fr_CA', 'es_419', 'zh_HANT');
+   * hyphenated requests ('fr-CA') are also accepted.
    * Implements fallback chain:
-   * 1. Exact match (e.g., 'fr-CA')
-   * 2. Base language (e.g., 'fr' from 'fr-CA')
-   * 3. English fallback (e.g., 'en')
+   * 1. Exact match (e.g., 'fr_CA')
+   * 2. Same locale with the other separator (e.g., 'fr_CA' for 'fr-CA')
+   * 3. Base language (e.g., 'fr' from 'fr_CA')
+   * 4. English fallback (e.g., 'en')
    * 
    * @param {string} locale - Language locale code (default 'en')
    * @returns {object|null} Translation map with fallback chain applied
@@ -2941,10 +3199,16 @@ export class CompetitionHub extends EventEmitter {
     if (this.translations[localeStr]) {
       return this.translations[localeStr];
     }
+
+    // 2. Try the same locale with the other separator
+    const alternate = localeStr.includes('-') ? localeStr.replace(/-/g, '_') : localeStr.replace(/_/g, '-');
+    if (alternate !== localeStr && this.translations[alternate]) {
+      return this.translations[alternate];
+    }
     
-    // 2. Try base language (e.g., 'pt' from 'pt-PT')
-    if (localeStr.includes('-')) {
-      const baseLanguage = localeStr.split('-')[0];
+    // 3. Try base language (e.g., 'pt' from 'pt_PT')
+    const baseLanguage = localeBaseLanguage(localeStr);
+    if (baseLanguage) {
       if (this.translations[baseLanguage]) {
         logger.log(`[Hub] Locale '${localeStr}' not found, falling back to base language '${baseLanguage}'`);
         return this.translations[baseLanguage];
@@ -3069,13 +3333,14 @@ export class CompetitionHub extends EventEmitter {
     for (const resource of resources) {
       const existing = this._pendingResources.get(resource);
       if (!existing) {
-        this._pendingResources.set(resource, { retryCount: 0, gaveUp: false, nextRetryAt: now + RESOURCE_RETRY_BASE_MS, requestOptions: options });
+        this._pendingResources.set(resource, { retryCount: 0, gaveUp: false, requestedAt: 0, nextRetryAt: now + RESOURCE_RETRY_BASE_MS, requestOptions: options });
       } else if (existing.gaveUp) {
         // Revive a previously abandoned resource: a caller has explicitly asked
         // for it again (e.g. reconnect re-derives missing preconditions, or a
         // plugin route is hit again), so give it a fresh set of retries.
         existing.gaveUp = false;
         existing.retryCount = 0;
+        existing.requestedAt = 0;
         existing.nextRetryAt = now + RESOURCE_RETRY_BASE_MS;
         existing.requestOptions = options;
       } else if (Object.keys(options).length > 0) {
@@ -3083,6 +3348,23 @@ export class CompetitionHub extends EventEmitter {
       }
     }
     if (this._requestResourcesCallback && this._hasActivePendingResources()) this._ensureResourceRetryLoop();
+  }
+
+  /** true when the resource has been asked for and is still awaited (not abandoned) */
+  _isRequestInFlight(resource) {
+    const info = this._pendingResources.get(resource);
+    return Boolean(info && !info.gaveUp && info.requestedAt > 0);
+  }
+
+  /** Record that a request for these resources left for OWLCMS: the retry loop waits before asking again. */
+  _markRequested(resources) {
+    const now = Date.now();
+    for (const resource of resources) {
+      const info = this._pendingResources.get(resource);
+      if (!info) continue;
+      info.requestedAt = now;
+      info.nextRetryAt = now + Math.min(RESOURCE_RETRY_BASE_MS * 2 ** info.retryCount, RESOURCE_RETRY_MAX_BACKOFF_MS);
+    }
   }
 
   _fulfillResource(resource) {
@@ -3130,6 +3412,7 @@ export class CompetitionHub extends EventEmitter {
             const info = this._pendingResources.get(resource);
             if (!info) continue;
             info.retryCount++;
+            info.requestedAt = now;
             if (info.retryCount >= RESOURCE_MAX_RETRIES) {
               info.gaveUp = true;
               logger.error(`[Hub] Giving up on resource '${resource}' after ${info.retryCount} retries (will retry if requested again)`);
@@ -3176,6 +3459,8 @@ export class CompetitionHub extends EventEmitter {
     this.flagsReady = false;
     this.logosLoaded = false;
     this.logosReady = false;
+    this.picturesLoaded = false;
+    this.picturesReady = false;
     this.gamxLoaded = false;
     this.gamxReady = false;
     // Clear translations completely so a reconnect forces a fresh translations_zip

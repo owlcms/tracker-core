@@ -25,14 +25,15 @@
  *
  * Must match the version emitted by the Java backend WebSocketEventSender.java.
  */
-export const PROTOCOL_VERSION = '64.0.0';
+export const PROTOCOL_VERSION = '69.0.0';
 
 /**
  * Minimum protocol version accepted from OWLCMS.
  *
- * The tracker expects OWLCMS 64.0.0+ to ensure message compatibility.
+ * OWLCMS 66, 67 and 68 all send protocol 64.0.0, so a minimum of 69.0.0 refuses them.
+ * tracker-core 2.0 requires OWLCMS 69 (jury and adjudication state, start latch, break timing).
  */
-export const MINIMUM_PROTOCOL_VERSION = '64.0.0';
+export const MINIMUM_PROTOCOL_VERSION = '69.0.0';
 
 /**
  * Parse semantic version string into components.

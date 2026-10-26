@@ -50,7 +50,30 @@ try {
 
 	assert.equal(message.status, 428, 'refresh request should use 428 precondition response');
 	assert.equal(message.reason, 'database_refresh', 'refresh request should identify database_refresh reason');
+	assert.equal(message.refresh, true, 'refresh request should ask OWLCMS to refresh its cached resources');
 	assert.deepEqual(message.missing, ['database'], 'refresh request should ask for database only');
+
+	// Routine requests (not a refresh) must not ask OWLCMS to rebuild its cached archives. While the database
+	// sent at connection is awaited, a message is answered 202; the retry loop then asks with refresh:false.
+	const received = [];
+	client.on('message', (data) => received.push(JSON.parse(data.toString())));
+	client.send(JSON.stringify({
+		version: '69.0.0',
+		type: 'timer',
+		payload: { fopName: 'A', athleteTimerEventType: 'SetTime', athleteMillisRemaining: '60000' }
+	}));
+	hub._pendingResources.get('database').nextRetryAt = 0;
+	const deadline = Date.now() + 5000;
+	let retry;
+	while (!retry && Date.now() < deadline) {
+		retry = received.find((m) => m.status === 428 && m.reason !== 'database_refresh');
+		await new Promise((r) => setTimeout(r, 50));
+	}
+	assert.ok(received.some((m) => m.status === 202 && m.reason === 'waiting_for_startup_data'),
+		'timer without database is applied and answered 202 while the startup data is awaited');
+	assert.ok(retry, 'routine request for the missing database');
+	assert.ok(retry.missing.includes('database'), 'routine request asks for the database');
+	assert.equal(retry.refresh, false, 'routine request must carry an explicit refresh:false');
 
 	await new Promise((resolve) => {
 		client.once('close', resolve);

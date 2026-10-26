@@ -17,7 +17,7 @@ import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { isVersionAcceptable, parseVersion } from '../protocol/protocol-config.js';
+import { isVersionAcceptable, MINIMUM_PROTOCOL_VERSION, parseVersion } from '../protocol/protocol-config.js';
 import { invalidateCountryCodeMapCache } from '../utils/country-code-map.js';
 import { logger } from '../utils/logger.js';
 import { captureBinaryMessage, captureMessage, LEARNING_MODE } from '../utils/learning-mode.js';
@@ -108,6 +108,47 @@ async function verifySanityAfterTranslations(hub) {
 }
 
 /**
+ * Check that a binary frame starts with an acceptable protocol version header.
+ * A frame with no header, or with a version below the minimum, is refused and the protocol error is
+ * reported to the hub so that the tracker can show it.
+ *
+ * @param {Buffer} buffer - Binary frame data (key trailer already removed)
+ * @param {object} hub - CompetitionHub instance
+ * @returns {object|null} - null when acceptable, otherwise {rejected: true, reason, received, minimum}
+ */
+export function checkBinaryProtocol(buffer, hub) {
+	const refuse = (reason, received) => {
+		logger.error(`[BINARY] ❌ Protocol version validation failed: ${reason}`);
+		try {
+			hub?.reportProtocolError?.({ reason, received, minimum: MINIMUM_PROTOCOL_VERSION, source: 'binary' });
+		} catch (e) {
+			// Non-fatal: UI surfacing only
+		}
+		return { rejected: true, reason, received, minimum: MINIMUM_PROTOCOL_VERSION };
+	};
+
+	if (buffer.length >= 8) {
+		const versionLength = buffer.readUInt32BE(0);
+		if (versionLength > 0 && versionLength <= 20 && buffer.length >= 4 + versionLength + 4) {
+			const version = buffer.slice(4, 4 + versionLength).toString('utf8');
+			if (parseVersion(version)) {
+				const versionCheck = isVersionAcceptable(version);
+				if (!versionCheck.valid) {
+					return refuse(versionCheck.reason, version);
+				}
+				try {
+					hub?.clearProtocolError?.();
+				} catch (e) {
+					// Non-fatal
+				}
+				return null;
+			}
+		}
+	}
+	return refuse(`Binary frame has no protocol version header. Please upgrade OWLCMS (protocol ${MINIMUM_PROTOCOL_VERSION} or later is required).`, null);
+}
+
+/**
  * Parse and route binary message from OWLCMS
  * @param {Buffer} buffer - Binary frame data
  * @param {object} hub - CompetitionHub instance (injected)
@@ -132,125 +173,27 @@ export async function handleBinaryMessage(buffer, hub, metadata = {}) {
 			return;
 		}
 
-		// Read first 4-byte integer
-		const firstLength = buffer.readUInt32BE(0);
-
-		if (process.env.BINARY_DEBUG === 'true') {
-			const preview = buffer.slice(0, Math.min(20, buffer.length)).toString('hex');
-			logger.debug(`[BINARY] Frame start (hex): ${preview}`);
-			logger.debug(`[BINARY] First 4-byte value: ${firstLength} (0x${firstLength.toString(16)}), total frame: ${buffer.length} bytes`);
+		// Frames without an acceptable protocol version are refused (the server normally checks first)
+		const refusal = checkBinaryProtocol(buffer, hub);
+		if (refusal) {
+			return refusal;
 		}
 
-		let offset = 0;
-		let protocolVersion = null;
-		let messageType = null;
-		let payload = null;
+		// [4-byte versionLength][version][4-byte typeLength][type][payload]
+		const versionLength = buffer.readUInt32BE(0);
+		let offset = 4 + versionLength;
 
-		// Detect frame format by checking if first value looks like a version length (typically 5-7)
-		// vs a type length (typically 5-17 for "translations_zip", "flags", etc)
-		//
-		// If firstLength is 5-7 and buffer contains valid UTF-8 that looks like a version (e.g., "2.0.0"),
-		// treat it as version 2.0.0+ format. Otherwise, treat as legacy format.
+		const typeLength = buffer.readUInt32BE(offset);
+		offset += 4;
 
-		if (firstLength <= 20 && firstLength > 0 && buffer.length >= 4 + firstLength + 4) {
-			// Try to parse as version string
-			try {
-				const potentialVersion = buffer.slice(4, 4 + firstLength).toString('utf8');
-				const parsedVer = parseVersion(potentialVersion);
-
-				if (parsedVer) {
-					// Looks like a valid version string (e.g., "2.0.0")
-					if (process.env.BINARY_DEBUG === 'true') {
-						logger.debug(`[BINARY] ✅ Detected version 2.0.0+ format with protocol version: ${potentialVersion}`);
-					}
-					const versionCheck = isVersionAcceptable(potentialVersion);
-					if (!versionCheck.valid) {
-						logger.error(`[BINARY] ❌ Protocol version validation failed: ${versionCheck.reason}`);
-						try {
-							hub?.reportProtocolError?.({
-								reason: versionCheck.reason || 'Protocol version validation failed',
-								received: potentialVersion,
-								minimum: versionCheck.minimum,
-								source: 'binary'
-							});
-						} catch (e) {
-							// Non-fatal
-						}
-						return;
-					}
-
-					// Version is valid - clear any previously latched protocol error
-					try {
-						hub?.clearProtocolError?.();
-					} catch (e) {
-						// Non-fatal
-					}
-
-					protocolVersion = potentialVersion;
-					offset = 4 + firstLength;
-
-					// Now read the message type
-					if (buffer.length < offset + 4) {
-						logger.error(`[BINARY] ERROR: Frame too short for type length at offset ${offset}`);
-						return;
-					}
-
-					const typeLength = buffer.readUInt32BE(offset);
-					offset += 4;
-
-					if (buffer.length < offset + typeLength) {
-						logger.error(
-							`[BINARY] ERROR: Frame too short for type (need ${offset + typeLength}, got ${buffer.length})`
-						);
-						return;
-					}
-
-					messageType = buffer.slice(offset, offset + typeLength).toString('utf8');
-					offset += typeLength;
-					payload = buffer.slice(offset);
-
-				} else {
-					// Not a version string, treat as legacy format
-					if (process.env.BINARY_DEBUG === 'true') {
-						logger.debug(`[BINARY] Detected legacy format (no version header)`);
-					}
-					messageType = buffer.slice(4, 4 + firstLength).toString('utf8');
-					payload = buffer.slice(4 + firstLength);
-				}
-			} catch (e) {
-				// Failed to parse as version, treat as legacy format
-				logger.info(`[BINARY] Treating as legacy format: ${e.message}`);
-				messageType = buffer.slice(4, 4 + firstLength).toString('utf8');
-				payload = buffer.slice(4 + firstLength);
-			}
-		} else {
-			// Sanity check: if firstLength is unreasonably large (> 10MB), it's probably malformed
-			if (firstLength > 10 * 1024 * 1024) {
-				// Try to detect if this is a ZIP file (starts with 504B0304)
-				if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) {
-					logger.info('[BINARY] ℹ️  Detected ZIP file without type prefix - treating as flags_zip');
-					handleFlagsMessage(buffer, hub);
-					return;
-				}
-				logger.error(
-					`[BINARY] ERROR: firstLength appears malformed (${firstLength} bytes, 0x${firstLength.toString(16)}), but buffer is only ${buffer.length} bytes total`
-				);
-				return;
-			}
-
-			// Legacy format: firstLength is the type length
-			logger.info(`[BINARY] Treating as legacy format: firstLength=${firstLength} appears to be type length`);
-
-			if (buffer.length < 4 + firstLength) {
-				logger.error(
-					`[BINARY] ERROR: Frame too short for type (need ${4 + firstLength}, got ${buffer.length})`
-				);
-				return;
-			}
-
-			messageType = buffer.slice(4, 4 + firstLength).toString('utf8');
-			payload = buffer.slice(4 + firstLength);
+		if (buffer.length < offset + typeLength) {
+			logger.error(`[BINARY] ERROR: Frame too short for type (need ${offset + typeLength}, got ${buffer.length})`);
+			return;
 		}
+
+		const messageType = buffer.slice(offset, offset + typeLength).toString('utf8');
+		offset += typeLength;
+		const payload = buffer.slice(offset);
 
 		// Route to handler based on message type
 		logger.info(`[BINARY] Processing message type: ${messageType} (payload: ${payload.length} bytes)`);
@@ -685,6 +628,7 @@ async function handleTranslationsZipMessage(zipBuffer, hub) {
 		const checksum = translationsData.translationsChecksum;
 		if (checksum && hub.getLastTranslationsChecksum() === checksum) {
 			logger.log('[TRANSLATIONS_ZIP] ✅ Checksum match - skipping reprocessing');
+			hub.emit('translations_loaded', { cached: true, timestamp: Date.now() });
 			return;
 		}
 
@@ -715,6 +659,7 @@ async function handleTranslationsZipMessage(zipBuffer, hub) {
 
 		// Update hub state
 		hub.setTranslationsReady(true);
+		hub.emit('translations_loaded', { cached: false, timestamp: Date.now() });
 
 		// Capture binary sample in learning mode
 		captureBinaryMessage('translations_zip', zipBuffer, {

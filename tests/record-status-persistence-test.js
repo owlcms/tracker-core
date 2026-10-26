@@ -27,7 +27,7 @@ hub.handleOwlcmsMessage({
 	recordMessage: 'New Record'
 }, 'decision');
 
-let update = hub.getFopUpdate({ fopName: 'A' });
+let update = hub.fopUpdates.A;
 assert.equal(update.recordKind, 'new', 'decision events should store the new-record kind on FOP state');
 assert.equal(update.recordMessage, 'New Record', 'decision events should store the new-record message on FOP state');
 
@@ -43,7 +43,7 @@ hub.handleOwlcmsMessage({
 	uiEvent: 'LiftingOrderUpdated'
 }, 'update');
 
-update = hub.getFopUpdate({ fopName: 'A' });
+update = hub.fopUpdates.A;
 assert.equal(update.recordKind, undefined, 'updates without a record must wipe stale recordKind (no sticking)');
 assert.equal(update.recordMessage, undefined, 'updates without a record must wipe stale recordMessage');
 
@@ -60,7 +60,7 @@ hub.handleOwlcmsMessage({
 	uiEvent: 'LiftingOrderUpdated'
 }, 'update');
 
-update = hub.getFopUpdate({ fopName: 'A' });
+update = hub.fopUpdates.A;
 assert.equal(update.recordKind, 'attempt', 'an update for a challenging athlete should show the attempt status');
 assert.equal(update.recordMessage, 'Record Attempt', 'an update for a challenging athlete should carry the attempt message');
 
@@ -75,7 +75,7 @@ hub.handleOwlcmsMessage({
 	uiEvent: 'LiftingOrderUpdated'
 }, 'update');
 
-update = hub.getFopUpdate({ fopName: 'A' });
+update = hub.fopUpdates.A;
 assert.equal(update.recordKind, 'none', 'an explicit none from OWLCMS should clear the record status');
 
 console.log('✓ Record status is idempotent: attempt shows only for a challenging athlete and never sticks on stale updates\n');

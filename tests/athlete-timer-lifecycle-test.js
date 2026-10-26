@@ -11,7 +11,7 @@ const hub = new CompetitionHub();
 hub.databaseState = { athletes: [{ key: 1 }] };
 
 function currentTimerState() {
-  const fopUpdate = hub.getFopUpdate({ fopName: 'A' });
+  const fopUpdate = hub.fopUpdates.A;
   const { timer, breakTimer } = extractTimers(fopUpdate);
   const decision = extractDecisionState(fopUpdate);
   const { displayMode } = computeDisplayMode(timer, breakTimer, decision);

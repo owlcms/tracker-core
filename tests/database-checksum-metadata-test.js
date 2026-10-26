@@ -14,11 +14,14 @@ const database = {
 const zip = new AdmZip();
 zip.addFile('competition.json', Buffer.from(JSON.stringify(database), 'utf8'));
 const zipBytes = zip.toBuffer();
+const version = Buffer.from('69.0.0', 'utf8');
 const type = Buffer.from('database_zip', 'utf8');
-const frame = Buffer.alloc(4 + type.length + zipBytes.length);
-frame.writeUInt32BE(type.length, 0);
-type.copy(frame, 4);
-zipBytes.copy(frame, 4 + type.length);
+const frame = Buffer.alloc(4 + version.length + 4 + type.length + zipBytes.length);
+frame.writeUInt32BE(version.length, 0);
+version.copy(frame, 4);
+frame.writeUInt32BE(type.length, 4 + version.length);
+type.copy(frame, 8 + version.length);
+zipBytes.copy(frame, 8 + version.length + type.length);
 
 let received;
 const hub = {

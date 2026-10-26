@@ -281,7 +281,7 @@ function normalizeV2Athlete(athlete, teamMap, categoryMap) {
     gender: athlete.gender,
     bodyWeight: athlete.bodyWeight,
     presumedBodyWeight: athlete.presumedBodyWeight,
-    yearOfBirth: athlete.fullBirthDate?.[0], // Extract year from [year, month, day]
+    yearOfBirth: extractV2Year(athlete.fullBirthDate),
     fullBirthDate: athlete.fullBirthDate,
     
     // Team - raw V2 field (numeric ID)
@@ -455,8 +455,26 @@ function extractV2FOPs(platforms) {
 }
 
 /**
- * Format V2 date array to ISO string
- * @param {Array} dateArray - V2 date [year, month, day]
+ * Extract the year from a V2 date.
+ * OWLCMS sends ISO strings ("2007-01-01"); legacy senders used arrays ([2007, 1, 1]).
+ * @param {string|Array} dateValue - V2 date
+ * @returns {string|null} four-digit year, or null when absent or unparseable
+ */
+export function extractV2Year(dateValue) {
+  if (typeof dateValue === 'string') {
+    const match = dateValue.trim().match(/^(\d{4})-/);
+    return match ? match[1] : null;
+  }
+  if (Array.isArray(dateValue) && dateValue.length > 0 && dateValue[0] != null) {
+    return String(dateValue[0]);
+  }
+  return null;
+}
+
+/**
+ * Format a V2 date as an ISO date string.
+ * Accepts ISO strings (current OWLCMS) and [year, month, day] arrays (legacy).
+ * @param {string|Array} dateValue - V2 date
  * @returns {string} ISO date string
  */
 function formatV2Date(dateValue) {

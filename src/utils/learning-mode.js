@@ -15,7 +15,8 @@ import { logger } from './logger.js';
  */
 
 export const LEARNING_MODE = process.env.LEARNING_MODE === 'true';
-const SAMPLES_DIR = path.resolve('samples');
+// LEARNING_MODE_DIR moves the samples and recordings elsewhere (e.g. a test's output folder)
+export const SAMPLES_DIR = path.resolve(process.env.LEARNING_MODE_DIR || 'samples');
 
 // Ensure samples directory exists if enabled
 if (LEARNING_MODE) {

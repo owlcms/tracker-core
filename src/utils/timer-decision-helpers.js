@@ -113,6 +113,8 @@ export function extractTimers(fopUpdate, language = 'en') {
 	const breakEvent = fopUpdate?.breakTimerEventType;
 	const breakRemainingReported = parseInt(fopUpdate?.breakMillisRemaining || 0);
 	const breakStartMillisReported = parseInt(fopUpdate?.breakStartTimeMillis || fopUpdate?.breakStartTime || 0);
+	const breakEndMillisReported = parseOptionalMillis(fopUpdate?.breakEndTimeMillis);
+	const indefiniteBreak = fopUpdate?.indefiniteBreak === true || fopUpdate?.indefiniteBreak === 'true';
 	// Break timer is only shown once the announcer has actually started it (start anchor present).
 	// While fopState may already be 'BREAK' (e.g. before_introduction configured but not yet started),
 	// we hide the timer until breakStartTimeMillis is set by OWLCMS.
@@ -150,7 +152,10 @@ export function extractTimers(fopUpdate, language = 'en') {
 		breakDisplayText = language === 'no' ? 'STOPP' : 'STOP';
 	} else if (inBreakState) {
 		// Normal break with countdown
-		if (breakRemainingReported > 0 && breakStartMillisReported > 0) {
+		if (breakEndMillisReported !== null) {
+			breakEndMillis = breakEndMillisReported;
+			computedBreakRemaining = Math.max(0, breakEndMillis - Date.now());
+		} else if (breakRemainingReported > 0 && breakStartMillisReported > 0) {
 			// We have current timing: compute remaining based on start + duration
 			breakEndMillis = breakStartMillisReported + breakRemainingReported;
 			const now = Date.now();
@@ -170,7 +175,8 @@ export function extractTimers(fopUpdate, language = 'en') {
 		type: 'break',
 		state: inBreakState ? 'running' : 'stopped',
 		isActive: !isInactive && inBreakState,
-		visible: !isInactive && !isSessionDone && inBreakState && (breakTimerStarted || Boolean(breakDisplayText)),
+		visible: !isInactive && !isSessionDone && inBreakState
+			&& ((!indefiniteBreak && breakTimerStarted) || Boolean(breakDisplayText)),
 		timeRemaining: computedBreakRemaining,    // 0 if no timing data
 		duration: breakRemainingReported || parseInt(fopUpdate?.breakTimeAllowed || fopUpdate?.timeAllowed || 600000),
 		startTime: breakStartMillisReported || null,
@@ -230,6 +236,10 @@ export function computeDisplayMode(timer, breakTimer, decision) {
 
 /**
  * Extract decision state from FOP update
+ *
+ * The legacy fields (visible, type, ref1..3, down) describe the referee decision and are hidden during breaks.
+ * decisionState, adjudicationDecision and juryEventType (OWLCMS 69) are always passed through: plugins decide what
+ * to show, including during a jury or challenge break.
  * 
  * @param {Object} fopUpdate - The FOP update object from competition hub
  * @returns {Object} Decision state with visible, type, referee decisions, etc.
@@ -240,11 +250,18 @@ export function extractDecisionState(fopUpdate) {
 	const fopState = String(fopUpdate?.fopState || '').toUpperCase();
 	const isSessionDone = mode === 'SESSION_DONE';
 	const isBreakState = fopState === 'BREAK' || mode.startsWith('LIFT_COUNTDOWN') || fopUpdate?.break === true || fopUpdate?.break === 'true';
+	const juryInfo = {
+		decisionState: fopUpdate?.decisionState || null,
+		adjudicationDecision: fopUpdate?.adjudicationDecision || null,
+		adjudicationDecisionReceivedAt: fopUpdate?.adjudicationDecisionReceivedAt || null,
+		juryEventType: fopUpdate?.juryEventType || null
+	};
 	
 	if (eventType === 'StartTime' || isSessionDone || isBreakState) {
 		return {
 			visible: false, type: null, isSingleReferee: false,
-			ref1: null, ref2: null, ref3: null, down: false
+			ref1: null, ref2: null, ref3: null, down: false,
+			...juryInfo
 		};
 	}
 
@@ -282,7 +299,28 @@ export function extractDecisionState(fopUpdate) {
 		ref1: isDownOnly ? null : mapDecision(fopUpdate?.d1),
 		ref2: isDownOnly ? null : mapDecision(fopUpdate?.d2),
 		ref3: isDownOnly ? null : mapDecision(fopUpdate?.d3),
-		down: fopUpdate?.down === 'true' || isInitialDecision
+		down: fopUpdate?.down === 'true' || isInitialDecision,
+		...juryInfo
+	};
+}
+
+/**
+ * OWLCMS feature switches sent as defaults for plugin display options (update messages, OWLCMS 69).
+ * A switch that was not sent is reported as undefined so plugins can fall back to their own default.
+ *
+ * @param {Object} fopUpdate - The FOP update object from competition hub
+ * @returns {{juryDecisionsOnAttemptBoard?: boolean, juryDecisionsOnScoreboard?: boolean,
+ *   decisionSectionOnWarmupScoreboard?: boolean, decisionSectionStopwatch?: boolean,
+ *   decisionSectionShowAgeGroups?: boolean}}
+ */
+export function extractDecisionDisplayDefaults(fopUpdate) {
+	const flag = (value) => (value === undefined || value === null ? undefined : value === true || value === 'true');
+	return {
+		juryDecisionsOnAttemptBoard: flag(fopUpdate?.juryDecisionsOnAttemptBoard),
+		juryDecisionsOnScoreboard: flag(fopUpdate?.juryDecisionsOnScoreboard),
+		decisionSectionOnWarmupScoreboard: flag(fopUpdate?.decisionSectionOnWarmupScoreboard),
+		decisionSectionStopwatch: flag(fopUpdate?.decisionSectionStopwatch),
+		decisionSectionShowAgeGroups: flag(fopUpdate?.decisionSectionShowAgeGroups)
 	};
 }
 

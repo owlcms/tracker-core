@@ -19,7 +19,7 @@ export { getFlagPath as resolveFlagPath } from './asset-resolver.js';
 export { buildCacheKey } from './cache-utils.js';
 
 // Timer and decision helpers
-export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAndDecisionState } from './timer-decision-helpers.js';
+export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAndDecisionState, extractDecisionDisplayDefaults } from './timer-decision-helpers.js';
 
 // Attempt bar visibility
 export { computeAttemptBarVisibility, hasCurrentAthlete, logAttemptBarDebug } from './attempt-bar-visibility.js';
@@ -55,3 +55,6 @@ export {
 	inferBreakMessage, 
 	extractCurrentAttempt 
 } from './presentation-helpers.js';
+
+// Protocol recording (learning mode) and replay
+export { readRecording, redactTextFrame, redactDatabase, binaryFrameType } from './protocol-recording.js';

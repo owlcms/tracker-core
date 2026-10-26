@@ -18,7 +18,7 @@ hub.handleOwlcmsMessage({
   uiEvent: 'LiftingOrderUpdated'
 }, 'update');
 
-const firstUpdate = hub.getFopUpdate({ fopName: 'BLUE' });
+const firstUpdate = hub.fopUpdates.BLUE;
 const synthesizedBreakStart = Number.parseInt(firstUpdate.breakStartTimeMillis, 10);
 
 assert.ok(Number.isFinite(synthesizedBreakStart) && synthesizedBreakStart > 0,
@@ -38,7 +38,7 @@ hub.handleOwlcmsMessage({
   uiEvent: 'LiftingOrderUpdated'
 }, 'update');
 
-const secondUpdate = hub.getFopUpdate({ fopName: 'BLUE' });
+const secondUpdate = hub.fopUpdates.BLUE;
 assert.equal(secondUpdate.breakStartTimeMillis, String(synthesizedBreakStart),
   'hub should preserve the synthesized breakStartTimeMillis across later update snapshots');
 
@@ -67,7 +67,7 @@ try {
     uiEvent: 'LiftingOrderUpdated'
   }, 'update');
 
-  const firstBeforeIntroUpdate = beforeIntroHub.getFopUpdate({ fopName: 'BLUE' });
+  const firstBeforeIntroUpdate = beforeIntroHub.fopUpdates.BLUE;
   const firstBeforeIntroStart = Number.parseInt(firstBeforeIntroUpdate.breakStartTimeMillis, 10);
 
   fakeNow += 120000;
@@ -82,7 +82,7 @@ try {
     uiEvent: 'LiftingOrderUpdated'
   }, 'update');
 
-  const reloadedBeforeIntroUpdate = beforeIntroHub.getFopUpdate({ fopName: 'BLUE' });
+  const reloadedBeforeIntroUpdate = beforeIntroHub.fopUpdates.BLUE;
   assert.equal(Number.parseInt(reloadedBeforeIntroUpdate.breakStartTimeMillis, 10), firstBeforeIntroStart,
     'before-introduction reload updates must preserve the original break start anchor');
 
@@ -132,3 +132,46 @@ console.log('✓ Testing break endTimeMillis anchor survives cached snapshots...
 }
 
 console.log('✓ Break endTimeMillis anchor stays correct across stale snapshots\n');
+
+{
+  const originalNow = Date.now;
+  let now = 3_000_000;
+  Date.now = () => now;
+  try {
+    const ceremonyHub = new CompetitionHub();
+    const startedAt = now;
+    const start = {
+      fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'FIRST_SNATCH', mode: 'LIFT_COUNTDOWN',
+      breakTimerEventType: 'BreakStarted', indefiniteBreak: 'false',
+      breakStartTimeMillis: String(startedAt), breakMillisRemaining: '20000'
+    };
+    ceremonyHub.handleOwlcmsMessage(start, 'timer');
+
+    for (const [elapsed, mode, ceremonyType] of [
+      [5000, 'LIFT_COUNTDOWN_CEREMONY', 'OFFICIALS_INTRODUCTION'],
+      [10000, 'LIFT_COUNTDOWN', null],
+      [19000, 'LIFT_COUNTDOWN', null]
+    ]) {
+      now = startedAt + elapsed;
+      ceremonyHub.handleOwlcmsMessage({
+        ...start, mode, ceremonyType, uiEvent: 'InitialSync', breakMillisRemaining: 20000 - elapsed
+      }, 'update');
+      const timer = extractTimers(ceremonyHub.fopUpdates.A).breakTimer;
+      assert.equal(timer.timeRemaining, 20000 - elapsed, 'live remaining must not have elapsed time subtracted twice');
+      assert.equal(timer.endTimeMillis, startedAt + 20000, 'ceremony updates keep the original countdown deadline');
+      assert.equal(timer.visible, true);
+    }
+
+    const joiningHub = new CompetitionHub();
+    joiningHub.handleOwlcmsMessage({ ...start, breakMillisRemaining: 1000 }, 'update');
+    assert.equal(extractTimers(joiningHub.fopUpdates.A).breakTimer.timeRemaining, 1000,
+      'a tracker joining mid-break uses the live remaining time');
+
+    const indefiniteTimer = extractTimers({ ...start, indefiniteBreak: true, breakMillisRemaining: null }).breakTimer;
+    assert.equal(indefiniteTimer.visible, false, 'an indefinite break must not show a fabricated countdown');
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
+console.log('✓ Ceremony and keepalive updates preserve the running break deadline\n');
