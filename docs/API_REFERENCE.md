@@ -114,7 +114,7 @@ import { competitionHub } from '@owlcms/tracker-core';
 
 **Local assets URL prefix (`localUrlPrefix`)**
 
-The tracker serves OWLCMS-delivered local assets (flags, logos, pictures, styles) under a URL prefix.
+The tracker serves OWLCMS-delivered local assets (flags, logos, pictures, GAMX tables) under a URL prefix.
 
 - Default: `/local`
 - Configurable: e.g. `/assets`, `/media`, `/tracker-local`
@@ -127,7 +127,7 @@ The tracker writes OWLCMS-delivered ZIP contents under a configurable base direc
 
 - Configure the directory before using asset URL or HTML helpers.
 - Configurable via `setLocalFilesDir({ localFilesDir })` or websocket options
-- Subdirectories: `flags/`, `logos/`, `pictures/`, `styles/`
+- Subdirectories: `flags/`, `logos/`, `pictures/`, `gamx/`, `mappings/` (country code map delivered with `flags_zip`)
 
 Helpers such as `getFlagUrl` and the binary ZIP handlers derive their filesystem paths from this base directory.
 
@@ -386,21 +386,24 @@ const liftingOrder = competitionHub.getLiftingOrderEntries({
 
 #### `getTranslations({ locale })`
 
-Returns the translation map for the first available locale (exact, base language, then English).
+Returns the translation map for the first available locale (exact, other separator, base language, then English).
+
+OWLCMS sends locale keys as Java locale strings with **underscores** (`fr_CA`, `es_419`, `zh_HANT`).
+Hyphenated requests (`fr-CA`) are also accepted.
 
 **Parameters:**
-- `locale` (string) - Locale code (e.g., "en", "fr", "fr-CA")
+- `locale` (string) - Locale code (e.g., "en", "fr", "fr_CA")
 
 **Returns:** `Object`
 
 ```javascript
-const t = competitionHub.getTranslations({ locale: 'fr-CA' });
-// fr-CA map if present; otherwise fr, en, or {} when none are loaded
+const t = competitionHub.getTranslations({ locale: 'fr_CA' });
+// fr_CA map if present; otherwise fr, en, or {} when none are loaded
 ```
 
 **Fallback logic:**
-- `"fr-CA"` → Use `"fr-CA"` if present, otherwise `"fr"`, otherwise `"en"`
-- `"en-GB"` → Use `"en-GB"` if present, otherwise `"en"`
+- `"fr_CA"` → Use `"fr_CA"` if present, otherwise `"fr"`, otherwise `"en"`
+- `"fr-CA"` → Use `"fr-CA"` or `"fr_CA"` if present, otherwise `"fr"`, otherwise `"en"`
 - `"en"` → Use the English map if present
 
 **Usage:** Localize scoreboard labels and UI text.
@@ -626,7 +629,8 @@ competitionHub.setLocalFilesDir({ localFilesDir: '/var/data/tracker-local' });
 //   /var/data/tracker-local/flags
 //   /var/data/tracker-local/logos
 //   /var/data/tracker-local/pictures
-//   /var/data/tracker-local/styles
+//   /var/data/tracker-local/gamx
+//   /var/data/tracker-local/mappings
 ```
 
 **Note:** URL helpers (`getFlagUrl`, `getLogoUrl`) derive their filesystem lookups from this base directory and still emit URLs using the configured `localUrlPrefix`.
@@ -907,12 +911,39 @@ httpServer.listen(8095, () => {
 
 ### WebSocket Refresh Helpers
 
-These helpers send a 428-style precondition request back to OWLCMS over the
+#### `competitionHub.refreshResources(resources, { timeoutMs })`
+
+Asks OWLCMS for fresh copies of resources and waits for them. Sends one 428
+with `refresh: true` (reason `resource_refresh`), so OWLCMS rebuilds its cached
+archives; the database is always exported from current state. Goes through the
+hub, so it is safe in bundlers (see the connection ownership note below).
+
+```javascript
+import { competitionHub } from '@owlcms/tracker-core';
+
+// Before producing a document
+const { sent, received, timedOut } = await competitionHub.refreshResources(
+  ['database', 'logos_zip', 'flags_zip'],
+  { timeoutMs: 10000 }
+);
+```
+
+- **resources:** any of `database`, `translations_zip`, `flags_zip`, `logos_zip`, `pictures_zip`, `gamx_zip`.
+- **Waits for:** the database and translations always; archives only when they are already loaded (OWLCMS does not send empty archives, so waiting for one never received would always time out). Archives not yet loaded are still requested.
+- **Returns:** `{ sent, received, timedOut }`. `sent` is `false` when no OWLCMS connection became available within `timeoutMs`.
+
+#### `competitionHub.requestFullRefresh({ timeoutMs })`
+
+Calls `refreshResources()` for everything the tracker holds: database,
+translations and flags, plus logos, pictures and GAMX tables when loaded. The
+OWLCMS connection stays open. Returns the same result object.
+
+#### `requestDatabaseRefresh()`
+
+These module-level helpers send a 428-style precondition request back to OWLCMS over the
 active WebSocket connection.
 Direct imports below assume the same module instance owns the WebSocket connection;
 see the connection ownership note below when using a bundler.
-
-#### `requestDatabaseRefresh()`
 
 Requests a fresh `database_zip` payload from OWLCMS.
 
@@ -973,7 +1004,8 @@ Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:
   //   - flags_zip  -> <localFilesDir>/flags
   //   - logos_zip  -> <localFilesDir>/logos
   //   - pictures_zip -> <localFilesDir>/pictures
-  //   - styles     -> <localFilesDir>/styles
+  //   - gamx_zip   -> <localFilesDir>/gamx
+  //   - mappings/ entries of flags_zip -> <localFilesDir>/mappings
   // The consumer must serve these files at URL path: <localUrlPrefix>/*
   // Set this explicitly before using asset URL helpers.
   localFilesDir: '/var/lib/owlcms-tracker/local',
@@ -1015,7 +1047,7 @@ The hub is a **`globalThis` singleton** (`globalThis.__competitionHub`), so it i
 import { competitionHub } from '@owlcms/tracker-core';
 
 // The hub always holds the callback from the instance that owns the connection
-competitionHub._requestResourcesCallback(['database']);
+await competitionHub.refreshResources(['database']);
 
 // Or use the public method for plugin preconditions
 await competitionHub.requestPluginPreconditions(['flags_zip', 'logos_zip']);
@@ -1031,7 +1063,7 @@ This is only relevant when tracker-core is used inside a bundler (Vite, Webpack,
 
 ---
 
-## Local Files (flags/logos/pictures/styles)
+## Local Files (flags/logos/pictures/gamx)
 
 OWLCMS can send ZIP resources (e.g., `flags_zip`, `logos_zip`, `translations_zip`) over the same WebSocket connection.
 

@@ -34,7 +34,7 @@ The hub maintains several state stores to serve requests without re-reading raw 
 
 ### Translation and Asset Stores
 
-- **`translations`** – Per-locale translation map (e.g., `{ 'en': { 'Start': 'Start', ... }, 'fr': { ... } }`). Populated by `translations_zip` binary messages. Supports regional variants with base-language fallback (e.g., `'fr-CA'` falls back to `'fr'`).
+- **`translations`** – Per-locale translation map (e.g., `{ 'en': { 'Start': 'Start', ... }, 'fr': { ... } }`). Populated by `translations_zip` binary messages. Locale keys are OWLCMS Java locale strings with underscores (e.g., `'fr_CA'`); regional variants fall back to their base language (`'fr_CA'` → `'fr'`), and hyphenated requests (`'fr-CA'`) are also accepted.
 
 - **`translationsReady`** – Boolean flag indicating all translation locales have been loaded.
 

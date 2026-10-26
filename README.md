@@ -6,6 +6,10 @@ Build custom scoreboards, REST APIs, OBS and vMix controllers, and other competi
 
 ---
 
+## Requirements
+
+Tracker Core 2.0 requires **OWLCMS 69** or later: the minimum accepted WebSocket protocol version is `69.0.0`. OWLCMS 66, 67 and 68 send `64.0.0` and are refused (see the [WebSocket Message Spec](./docs/WEBSOCKET_MESSAGE_SPEC.md)).
+
 ## What is Tracker Core?
 
 **Tracker Core** is a server-side Node.js package that:
