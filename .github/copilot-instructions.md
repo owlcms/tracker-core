@@ -20,6 +20,7 @@ You are helping build **tracker-core**, a shared NPM package for Olympic weightl
 - **DO NOT** run `git` commands (commit, push, add, etc.) without explicit user approval.
 - You may suggest git commands, but do not execute them automatically.
 - Always ask for permission before modifying the repository history or remote state.
+- Never add a Copilot `Co-authored-by` trailer to a commit message.
 
 ## �🛠️ Development Environment
 

@@ -56,11 +56,7 @@ function autoCommitReleaseNotesIfNeeded(dirtyPaths) {
   if (dirtyPaths.length === 1 && dirtyPaths[0] === releaseNotesPath) {
     console.log('📝 Committing ReleaseNotes.md before release...');
     execSync(`git add ${releaseNotesPath}`, { cwd: rootDir, stdio: 'inherit' });
-    execSync(
-      'git commit -m "docs: update release notes" ' +
-      '-m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"',
-      { cwd: rootDir, stdio: 'inherit' }
-    );
+    execSync('git commit -m "docs: update release notes"', { cwd: rootDir, stdio: 'inherit' });
     return [];
   }
 
@@ -97,11 +93,7 @@ try {
   // 2. Git Commit
   console.log('💾 Committing change...');
   execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
-  execSync(
-    `git commit -m "chore: release ${newVersion}" ` +
-    `-m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"`,
-    { cwd: rootDir, stdio: 'inherit' }
-  );
+  execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
 
   // 3. Git Tag (only if tag doesn't exist)
   const tags = execSync('git tag -l', { cwd: rootDir, encoding: 'utf8' });
