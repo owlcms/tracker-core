@@ -20,10 +20,19 @@ if (!newVersion) {
   process.exit(1);
 }
 
-// Validate version format (simple check)
-if (!/^\d+\.\d+\.\d+/.test(newVersion)) {
+// Validate version format
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(newVersion)) {
   console.error(`❌ Error: Version "${newVersion}" does not look like a valid semver version.`);
   process.exit(1);
+}
+
+const expectedBranch = process.env.RELEASE_BRANCH;
+if (expectedBranch) {
+  const currentBranch = execSync('git branch --show-current', { cwd: rootDir, encoding: 'utf8' }).trim();
+  if (currentBranch !== expectedBranch) {
+    console.error(`❌ Error: Release must run from branch "${expectedBranch}", not "${currentBranch || 'detached HEAD'}".`);
+    process.exit(1);
+  }
 }
 
 function getDirtyPaths() {
@@ -47,7 +56,11 @@ function autoCommitReleaseNotesIfNeeded(dirtyPaths) {
   if (dirtyPaths.length === 1 && dirtyPaths[0] === releaseNotesPath) {
     console.log('📝 Committing ReleaseNotes.md before release...');
     execSync(`git add ${releaseNotesPath}`, { cwd: rootDir, stdio: 'inherit' });
-    execSync('git commit -m "docs: update release notes"', { cwd: rootDir, stdio: 'inherit' });
+    execSync(
+      'git commit -m "docs: update release notes" ' +
+      '-m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"',
+      { cwd: rootDir, stdio: 'inherit' }
+    );
     return [];
   }
 
@@ -74,23 +87,21 @@ try {
 }
 
 try {
-  // 1. Update package.json
-  console.log(`\n📦 Updating package.json to version ${newVersion}...`);
+  // 1. Update package.json and package-lock.json
+  console.log(`\n📦 Updating package.json and package-lock.json to version ${newVersion}...`);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   const oldVersion = packageJson.version;
   
-  // Check if version is already set
-  if (packageJson.version === newVersion) {
-    console.log(`⚠️  Version ${newVersion} already set in package.json`);
-  } else {
-    packageJson.version = newVersion;
-    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
-  }
+  execSync(`npm version "${newVersion}" --no-git-tag-version`, { cwd: rootDir, stdio: 'inherit' });
 
   // 2. Git Commit
   console.log('💾 Committing change...');
   execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'inherit' });
-  execSync(`git commit -m "chore: release ${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
+  execSync(
+    `git commit -m "chore: release ${newVersion}" ` +
+    `-m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"`,
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   // 3. Git Tag (only if tag doesn't exist)
   const tags = execSync('git tag -l', { cwd: rootDir, encoding: 'utf8' });
@@ -101,22 +112,12 @@ try {
     execSync(`git tag ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
   }
 
-  // 4. Git Push
-  console.log('🚀 Pushing to remote...');
-  try {
-    execSync('git push', { cwd: rootDir, stdio: 'inherit' });
-  } catch (error) {
-    // Branch might already be up to date
-    console.log('⚠️  Branch already up to date on remote');
-  }
+  // 4. Push the release commit before publishing its tag
+  console.log('🚀 Pushing release commit to remote...');
+  const currentBranch = execSync('git branch --show-current', { cwd: rootDir, encoding: 'utf8' }).trim();
+  execSync(`git push --set-upstream origin "${currentBranch}"`, { cwd: rootDir, stdio: 'inherit' });
   
-  // Push tag if it doesn't exist on remote
-  try {
-    execSync(`git push origin ${newVersion}`, { cwd: rootDir, stdio: 'inherit' });
-  } catch (error) {
-    // Tag might already exist on remote
-    console.log(`⚠️  Tag ${newVersion} already exists on remote`);
-  }
+  execSync(`git push origin "${newVersion}"`, { cwd: rootDir, stdio: 'inherit' });
 
   console.log(`\n✅ Successfully released ${newVersion}`);
   console.log(`   Previous: ${oldVersion}`);
