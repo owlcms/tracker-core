@@ -221,6 +221,8 @@ async function purgeLocalAssetDirs(hub) {
  * @param {string} [options.localFilesDir] - Directory for OWLCMS ZIP resources
  * @param {string} [options.localUrlPrefix='/local'] - URL prefix for local assets
  * @param {function} [options.onConnect] - Callback when client connects
+ * @param {function} [options.onAuthenticatedConnection] - Callback after the first authenticated message
+ * @param {function} [options.onServerInfo] - Callback when OWLCMS reports its HTTP server information
  * @param {function} [options.onDisconnect] - Callback when client disconnects
  * @param {function} [options.onMessage] - Callback when message received
  * @param {function} [options.onError] - Callback on error
@@ -234,6 +236,8 @@ export function attachWebSocketToServer(options = {}) {
 		localFilesDir, 
 		localUrlPrefix = '/local',
 		onConnect,
+		onAuthenticatedConnection,
+		onServerInfo,
 		onDisconnect,
 		onMessage,
 		onError
@@ -268,7 +272,14 @@ export function attachWebSocketToServer(options = {}) {
 	logger.info(`[WebSocket] Local files directory: ${localFilesDir || 'default (./local)'}`);
 	logger.info(`[WebSocket] Local URL prefix: ${localUrlPrefix}`);
 	
-	const handler = initWebSocketServer(server, path, { onConnect, onDisconnect, onMessage, onError });
+	const handler = initWebSocketServer(server, path, {
+		onConnect,
+		onAuthenticatedConnection,
+		onServerInfo,
+		onDisconnect,
+		onMessage,
+		onError
+	});
 	
 	// Mark this server as having WebSocket attached
 	attachedServers.set(server, handler);
@@ -285,6 +296,8 @@ export function attachWebSocketToServer(options = {}) {
  * @param {string} [options.localFilesDir] - Directory for OWLCMS ZIP resources
  * @param {string} [options.localUrlPrefix='/local'] - URL prefix for local assets
  * @param {function} [options.onConnect] - Callback when client connects
+ * @param {function} [options.onAuthenticatedConnection] - Callback after the first authenticated message
+ * @param {function} [options.onServerInfo] - Callback when OWLCMS reports its HTTP server information
  * @param {function} [options.onDisconnect] - Callback when client disconnects
  * @param {function} [options.onMessage] - Callback when message received
  * @param {function} [options.onError] - Callback on error
@@ -298,6 +311,8 @@ export async function createWebSocketServer(options = {}) {
 		localFilesDir,
 		localUrlPrefix = '/local',
 		onConnect,
+		onAuthenticatedConnection,
+		onServerInfo,
 		onDisconnect,
 		onMessage,
 		onError
@@ -333,7 +348,14 @@ export async function createWebSocketServer(options = {}) {
 		logger.info(`[WebSocket] Standalone server listening on port ${port}`);
 	});
 	
-	const handler = initWebSocketServer(httpServer, path, { onConnect, onDisconnect, onMessage, onError });
+	const handler = initWebSocketServer(httpServer, path, {
+		onConnect,
+		onAuthenticatedConnection,
+		onServerInfo,
+		onDisconnect,
+		onMessage,
+		onError
+	});
 	
 	return {
 		close: () => {
@@ -371,8 +393,9 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 		// Track if this is the first connection since server start
 		let firstConnectionHandled = false;
 
-		wss.on('connection', (ws) => {
+		wss.on('connection', (ws, request) => {
 			logger.info('[WebSocket] Client connected');
+			const remoteAddress = request?.socket?.remoteAddress || ws?._socket?.remoteAddress || 'unknown remote';
 			// learning mode: record every frame of this connection, both directions, in arrival order
 			const recording = startRecording();
 			if (recording) {
@@ -393,7 +416,32 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 			hubInstance.requestStartupResources?.();
 
 			const expectedUpdateKey = configuredUpdateKey();
-			const remoteAddress = ws?._socket?.remoteAddress || 'unknown remote';
+			let hasReportedServerAddress = false;
+			function reportAuthenticatedConnection() {
+				if (hasReportedServerAddress) return;
+				hasReportedServerAddress = true;
+				if (callbacks.onAuthenticatedConnection) {
+					try {
+						callbacks.onAuthenticatedConnection({ remoteAddress });
+					} catch (e) {
+						logger.error('[WebSocket] onAuthenticatedConnection error:', e);
+					}
+				}
+			}
+			function reportServerInfo(payload) {
+				hasReportedServerAddress = true;
+				if (callbacks.onServerInfo) {
+					try {
+						callbacks.onServerInfo({
+							remoteAddress,
+							port: payload?.port,
+							scheme: payload?.scheme
+						});
+					} catch (e) {
+						logger.error('[WebSocket] onServerInfo error:', e);
+					}
+				}
+			}
 			if (expectedUpdateKey) {
 				logger.warn(`[WebSocket] OWLCMS authentication required for ${remoteAddress}`);
 			}
@@ -513,6 +561,7 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 						sendProtocolRefusal(ws, protocolRefusal.reason, protocolRefusal.received);
 						return;
 					}
+					reportAuthenticatedConnection();
 					if (process.env.BINARY_DEBUG === 'true') {
 						logger.debug('[WebSocket] Binary frame received, routing to binary handler');
 					}
@@ -598,6 +647,9 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 					return;
 				}
 				logger.debug(`[WebSocket] ✅ Protocol version validated: ${versionCheck.version}`);
+				if (messageType !== 'SERVER_INFO') {
+					reportAuthenticatedConnection();
+				}
 				try {
 					hubInstance?.clearProtocolError?.();
 				} catch (e) {
@@ -619,6 +671,10 @@ function initWebSocketServer(httpServer, wsPath = '/ws', callbacks = {}) {
 				// Route based on message type
 				let result;
 				switch (message.type) {
+					case 'server_info':
+						reportServerInfo(message.payload);
+						result = { status: 200, message: 'Server info accepted' };
+						break;
 					case 'database':
 						flushAndResetOnce();
 						result = await handleDatabaseMessage(message.payload);

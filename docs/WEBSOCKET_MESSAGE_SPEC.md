@@ -28,9 +28,10 @@ The WebSocket destination is configured in OWLCMS as a `ws://` or `wss://` URL f
 
 Every time the connection opens (including reconnects), OWLCMS sends, in order:
 
-1. `database_metadata` (text) followed by `database_zip` (binary)
-2. `translations_zip` (binary)
-3. `flags_zip` (binary), only when there are flags to send
+1. `server_info` (text)
+2. `database_metadata` (text) followed by `database_zip` (binary)
+3. `translations_zip` (binary)
+4. `flags_zip` (binary), only when there are flags to send
 
 `logos_zip`, `pictures_zip` and `gamx_zip` are sent only when the receiver asks for them with a 428 response (see [Requesting Missing Data](#requesting-missing-data-428)). tracker-core requests `logos_zip` once after the first database load on each connection.
 
@@ -65,7 +66,7 @@ Every text frame is a JSON object:
 | Field | Description |
 |-------|-------------|
 | `version` | Protocol version. Required by tracker-core; a missing or too-old version is answered with `400`. |
-| `type` | `update`, `timer`, `decision`, or `database_metadata` |
+| `type` | `update`, `timer`, `decision`, `server_info`, or `database_metadata` |
 | `payload` | Message-specific object |
 
 `updateKey` is present in the payload only when a key is configured.
@@ -608,7 +609,29 @@ No text and no display duration: the tracker translates `JuryNotification.Revers
 
 ---
 
-### 4. DATABASE_METADATA Messages
+### 4. SERVER_INFO Messages
+
+**Type:** `"server_info"`
+
+**Purpose:** Announces the OWLCMS HTTP listener used for pages such as scoreboards. It is sent once whenever the WebSocket connection opens.
+
+```json
+{
+  "version": "69.0.0",
+  "type": "server_info",
+  "payload": {
+    "scheme": "http",
+    "port": 8080,
+    "updateKey": "secret123"
+  }
+}
+```
+
+tracker-core combines the advertised `scheme` and `port` with the authenticated WebSocket connection's remote address; OWLCMS does not advertise a host name or address. Consumers receive the result through `onServerInfo`. For OWLCMS versions without this message, `onAuthenticatedConnection` exposes the remote address so a consumer can use the legacy HTTP port 8080.
+
+---
+
+### 5. DATABASE_METADATA Messages
 
 **Type:** `"database_metadata"`
 
@@ -815,6 +838,7 @@ tracker-core answers each **text** frame with one JSON text frame. Binary frames
 | Situation | Response |
 |-----------|----------|
 | `update`, `timer`, `decision` processed | `{"status": 200, "message": "Update processed"}` (`Timer processed`, `Decision processed`) |
+| `server_info` received | `{"status": 200, "message": "Server info accepted"}` |
 | `database_metadata` received | `{"status": 200, "message": "Database metadata accepted"}` |
 | Database still loading | `{"status": 202, "message": "Database load in progress, please retry"}` |
 | Database or translations missing, no request outstanding | `428`, see below |
