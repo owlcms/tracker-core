@@ -1021,11 +1021,33 @@ Both `createWebSocketServer` and `attachWebSocketToServer` accept these options:
   server: httpServer,            // HTTP server (inject mode only)
   
   // Callbacks
-  onConnect: (ws) => {},         // Called when OWLCMS connects
+  onConnect: (ws) => {},         // Socket opened; not yet authenticated
+  onAuthenticatedConnection: ({ remoteAddress }) => {},
+  onServerInfo: ({ remoteAddress, scheme, port }) => {},
   onDisconnect: () => {},        // Called when OWLCMS disconnects
   onError: (error) => {}         // Called on WebSocket errors
 }
 ```
+
+### OWLCMS Server Information Callbacks
+
+Added in **2.0.0-beta02**, these optional callbacks are supported in both standalone and attached-server modes:
+
+| Callback | Argument | When it runs |
+|----------|----------|--------------|
+| `onConnect` | WebSocket instance | When the socket opens, before authentication or protocol validation. Do not use it as proof of an accepted OWLCMS connection. |
+| `onServerInfo` | `{ remoteAddress, scheme, port }` | For each accepted `server_info` message, after update-key and protocol-version checks. `scheme` and `port` are the HTTP listener values supplied by OWLCMS. |
+| `onAuthenticatedConnection` | `{ remoteAddress }` | Once per connection, on the first accepted text or binary frame if no `server_info` has been handled yet. A consumer can use this for a legacy `http`/8080 fallback. |
+
+If `server_info` arrives first (the current OWLCMS startup sequence), `onServerInfo` runs and suppresses `onAuthenticatedConnection` for that connection, even if no `onServerInfo` callback was configured. If another accepted frame arrives first, the fallback callback runs once; a later `server_info` still invokes `onServerInfo` and can replace the fallback. Reconnecting resets this tracking.
+
+`remoteAddress` comes from the WebSocket peer socket, not from an advertised host name or a forwarded header. It can be an IPv4, IPv6, or IPv4-mapped IPv6 address (or `"unknown remote"` if unavailable). Behind a reverse proxy it can identify the proxy rather than OWLCMS; consumers may need an explicitly configured origin.
+
+The core forwards `scheme` and `port` without validating or defaulting them. Current OWLCMS sends `"http"` and its numeric HTTP listener port. Consumers building an origin URL must validate these values and format IPv6 hosts correctly. The callbacks do not create a proxy URL, store server information in the hub, or automatically select port 8080.
+
+When `OWLCMS_UPDATEKEY` is unset, authentication is disabled: these callbacks still run after protocol checks, but do not establish an authenticated sender identity.
+
+See the [SERVER_INFO wire format](./WEBSOCKET_MESSAGE_SPEC.md#4-server_info-messages).
 
 ---
 
@@ -1376,6 +1398,12 @@ const newRecords = extractRecordsFromUpdate(fopUpdate);
 ## Data Structures
 
 ### Database State
+
+Signed and unsigned OWLCMS V2 exports are both accepted. The optional top-level
+`signature` object is ignored during normalization and is not exposed by
+`getDatabaseState()`. Tracker-core does not cryptographically verify that
+signature; it is separate from WebSocket update-key authentication. Compatibility
+is covered by a regression test added in **2.0.0-beta02**.
 
 Representative V2 structure returned by `getDatabaseState()` (additional fields may be present):
 

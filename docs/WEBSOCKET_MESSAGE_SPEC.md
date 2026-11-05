@@ -615,6 +615,8 @@ No text and no display duration: the tracker translates `JuryNotification.Revers
 
 **Purpose:** Announces the OWLCMS HTTP listener used for pages such as scoreboards. It is sent once whenever the WebSocket connection opens.
 
+Supported by tracker-core since **2.0.0-beta02**.
+
 ```json
 {
   "version": "69.0.0",
@@ -627,7 +629,19 @@ No text and no display duration: the tracker translates `JuryNotification.Revers
 }
 ```
 
-tracker-core combines the advertised `scheme` and `port` with the authenticated WebSocket connection's remote address; OWLCMS does not advertise a host name or address. Consumers receive the result through `onServerInfo`. For OWLCMS versions without this message, `onAuthenticatedConnection` exposes the remote address so a consumer can use the legacy HTTP port 8080.
+| Payload field | Description |
+|---------------|-------------|
+| `scheme` | HTTP listener scheme. Current OWLCMS sends `"http"`. |
+| `port` | Numeric HTTP listener port. |
+| `updateKey` | Authentication key, only when configured. |
+
+After update-key and protocol-version checks, tracker-core invokes `onServerInfo({ remoteAddress, scheme, port })` in either WebSocket integration mode. The address comes from the peer socket, not the payload; OWLCMS does not advertise a host name or address. The core forwards `scheme` and `port` without validating or defaulting them. Consumers must validate them before constructing URLs.
+
+If `server_info` is the first accepted message, it suppresses `onAuthenticatedConnection` for that connection. Otherwise, the first accepted text or binary frame invokes `onAuthenticatedConnection({ remoteAddress })` once, allowing a consumer to use the legacy `http`/8080 fallback. A later `server_info` still invokes `onServerInfo`; repeated `server_info` messages also invoke it. This tracking resets on reconnect. No proxy URL or fallback port is selected by tracker-core itself.
+
+`onConnect` runs before these checks and must not be used as proof of authentication. When `OWLCMS_UPDATEKEY` is unset, key authentication is disabled. A peer address may be IPv6 (including IPv4-mapped IPv6) or may identify a reverse proxy instead of OWLCMS.
+
+See [OWLCMS Server Information Callbacks](./API_REFERENCE.md#owlcms-server-information-callbacks) for the consumer API.
 
 ---
 
@@ -727,11 +741,19 @@ Detection, reading from the end of the frame:
   "records": [ ],
   "recordConfig": { },
   "technicalOfficials": [ ],
-  "technicalOfficialsTimetable": [ ]
+  "technicalOfficialsTimetable": [ ],
+  "signature": { }
 }
 ```
 
 Dates are ISO-8601 strings (`"2026-08-26"`, `"2026-08-30T10:51:08.44137"`).
+
+`signature` is an optional top-level object on signed V2 exports. Tracker-core
+accepts both signed and unsigned exports and ignores this object: it is not
+cryptographically verified or copied into the normalized database returned by
+`getDatabaseState()`. It does not replace WebSocket update-key authentication.
+Signed/unsigned parsing equivalence is covered by a regression test added in
+**2.0.0-beta02**.
 
 ##### Athlete Object
 
