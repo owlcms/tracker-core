@@ -1,8 +1,9 @@
 Release Notes
 
 ## Version 2.0
+- 2.0.0-beta02: Accept the `server_info` message sent when OWLCMS connects and expose its HTTP scheme and port together with the authenticated connection's remote address. Older OWLCMS connections expose the address with the legacy port 8080 fallback.
+- 2.0.0-beta02: Regression coverage confirms signed OWLCMS V2 exports parse identically to unsigned exports. The top-level `signature` is ignored, not verified or included in the normalized database.
 - 2.0.0-beta01: **Requires OWLCMS 69.** The protocol version is 69.0.0 and the minimum accepted version is now 69.0.0.
-- 2.0.0-beta01: Accept the `server_info` message sent when OWLCMS connects and expose its HTTP scheme and port together with the authenticated connection's remote address. Older OWLCMS connections expose the address with the legacy port 8080 fallback.
 - 2.0.0-beta01: Pages opened before the translations arrived kept showing untranslated keys (`!Group_number`, `!BreakType...`) after the translations loaded: the scoreboard API and plugin caches were not invalidated. Loading translations now invalidates them.
 - 2.0.0-beta01: Running break countdowns keep a stable end time across ceremony and keepalive updates. Those updates carry live remaining time, so subtracting elapsed time from it again made countdowns reach zero early. Indefinite breaks no longer expose a countdown.
 - 2.0.0-beta01: Aligned with the WebSocket protocol sent by OWLCMS 69, documented in `docs/WEBSOCKET_MESSAGE_SPEC.md`.
