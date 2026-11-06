@@ -19,7 +19,7 @@ Tracker Core is a shared Node.js library package installed directly from GitHub.
 - Review the beta02 entries in [ReleaseNotes.md](./ReleaseNotes.md).
 - Run `npm test` and `node scripts/verify-exports.js`.
 - Commit the release preparation changes before running the release wrapper.
-- From `dev69`, run `./release.sh` (defaults to `2.0.0-beta02`).
+- From `master`, run `./release.sh` (defaults to `2.0.0-beta02`).
 
 Preparation leaves `package.json` and `package-lock.json` at the last released
 version. The release script bumps both to beta02, commits, tags, and pushes;

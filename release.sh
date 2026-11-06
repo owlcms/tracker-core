@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 REVISION="${1:-2.0.0-beta02}"
-EXPECTED_BRANCH="${2:-${RELEASE_BRANCH:-dev69}}"
+EXPECTED_BRANCH="${2:-${RELEASE_BRANCH:-master}}"
 set -euo pipefail
 
 # Wrapper for the npm-based release flow (see RELEASE.md).
