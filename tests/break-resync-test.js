@@ -175,3 +175,34 @@ console.log('✓ Break endTimeMillis anchor stays correct across stale snapshots
 }
 
 console.log('✓ Ceremony and keepalive updates preserve the running break deadline\n');
+
+{
+  const originalNow = Date.now;
+  let now = 4_000_000;
+  Date.now = () => now;
+  try {
+    const snapshotHub = new CompetitionHub();
+    const snapshot = {
+      fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'BEFORE_INTRODUCTION',
+      mode: 'INTRO_COUNTDOWN', breakTimerEventType: '', breakStartTimeMillis: String(now),
+      breakMillisRemaining: '600000'
+    };
+    snapshotHub.handleOwlcmsMessage(snapshot, 'update');
+    const deadline = now + 600000;
+    assert.equal(extractTimers(snapshotHub.fopUpdates.A).breakTimer.endTimeMillis, deadline);
+
+    now += 360000;
+    snapshotHub.handleOwlcmsMessage({ ...snapshot, breakMillisRemaining: '240000' }, 'update');
+    const timer = extractTimers(snapshotHub.fopUpdates.A).breakTimer;
+    assert.equal(timer.endTimeMillis, deadline);
+    assert.equal(timer.timeRemaining, 240000, 'a remaining-time snapshot must not be subtracted from the original start twice');
+
+    now += 10000;
+    snapshotHub.handleOwlcmsMessage({ fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'BEFORE_INTRODUCTION' }, 'update');
+    assert.equal(extractTimers(snapshotHub.fopUpdates.A).breakTimer.timeRemaining, 230000);
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
+console.log('✓ Break snapshots without a timer event preserve the countdown deadline\n');

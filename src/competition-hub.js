@@ -364,7 +364,8 @@ function restoreBreakStartTimeIfNeeded(mergedState, existingState, now) {
 
 function updateBreakEndTime(mergedState, normalizedParams, existingState, now, messageType) {
   const indefinite = mergedState.indefiniteBreak === true || mergedState.indefiniteBreak === 'true';
-  if (!isIncomingBreakState(mergedState) || indefinite || mergedState.breakTimerEventType !== 'BreakStarted') {
+  const breakTimerEvent = mergedState.breakTimerEventType;
+  if (!isIncomingBreakState(mergedState) || indefinite || (breakTimerEvent && breakTimerEvent !== 'BreakStarted')) {
     delete mergedState.breakEndTimeMillis;
     return;
   }
@@ -378,7 +379,6 @@ function updateBreakEndTime(mergedState, normalizedParams, existingState, now, m
     mergedState.breakEndTimeMillis = start + remaining;
   } else if (start === parseOptionalMillis(existingState.breakStartTimeMillis)
       && mergedState.breakType === existingState.breakType
-      && existingState.breakTimerEventType === 'BreakStarted'
       && existingState.breakEndTimeMillis != null) {
     mergedState.breakEndTimeMillis = existingState.breakEndTimeMillis;
   } else if (messageType === 'update' && hasOwn(normalizedParams, 'breakMillisRemaining')) {
