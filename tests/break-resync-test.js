@@ -175,3 +175,79 @@ console.log('✓ Break endTimeMillis anchor stays correct across stale snapshots
 }
 
 console.log('✓ Ceremony and keepalive updates preserve the running break deadline\n');
+
+{
+  const originalNow = Date.now;
+  let now = 4_000_000;
+  Date.now = () => now;
+  try {
+    for (const event of ['', undefined]) {
+      now = 4_000_000;
+      const snapshotHub = new CompetitionHub();
+      const snapshot = {
+        fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'BEFORE_INTRODUCTION',
+        mode: 'INTRO_COUNTDOWN', breakStartTimeMillis: String(now),
+        breakMillisRemaining: '600000',
+        ...(event === undefined ? {} : { breakTimerEventType: event })
+      };
+      snapshotHub.handleOwlcmsMessage(snapshot, 'update');
+      const deadline = now + 600000;
+      assert.equal(extractTimers(snapshotHub.fopUpdates.A).breakTimer.endTimeMillis, deadline);
+
+      now += 360000;
+      snapshotHub.handleOwlcmsMessage({ ...snapshot, breakMillisRemaining: '240000' }, 'update');
+      const timer = extractTimers(snapshotHub.fopUpdates.A).breakTimer;
+      assert.equal(timer.endTimeMillis, deadline);
+      assert.equal(timer.timeRemaining, 240000,
+        'a remaining-time snapshot must not be subtracted from the original start twice');
+
+      const joiningHub = new CompetitionHub();
+      joiningHub.handleOwlcmsMessage({ ...snapshot, breakMillisRemaining: '240000' }, 'update');
+      assert.equal(extractTimers(joiningHub.fopUpdates.A).breakTimer.endTimeMillis, deadline);
+
+      now += 10000;
+      snapshotHub.handleOwlcmsMessage({
+        fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'BEFORE_INTRODUCTION'
+      }, 'update');
+      assert.equal(extractTimers(snapshotHub.fopUpdates.A).breakTimer.timeRemaining, 230000);
+
+      snapshotHub.handleOwlcmsMessage({
+        fop: 'A', breakTimerEventType: 'BreakPaused', breakMillisRemaining: '230000'
+      }, 'timer');
+      assert.equal(snapshotHub.fopUpdates.A.breakEndTimeMillis, undefined);
+      assert.equal(extractTimers(snapshotHub.fopUpdates.A).breakTimer.state, 'stopped');
+    }
+
+    now = 5_000_000;
+    const transitionHub = new CompetitionHub();
+    const start = {
+      fop: 'A', fopState: 'BREAK', break: 'true', breakType: 'BEFORE_INTRODUCTION',
+      mode: 'INTRO_COUNTDOWN', breakTimerEventType: 'BreakStarted',
+      breakStartTimeMillis: String(now), breakMillisRemaining: '600000'
+    };
+    transitionHub.handleOwlcmsMessage(start, 'timer');
+    const deadline = now + 600000;
+    now += 360000;
+    transitionHub.handleOwlcmsMessage({
+      ...start, breakTimerEventType: '', breakMillisRemaining: '240000'
+    }, 'update');
+    assert.equal(extractTimers(transitionHub.fopUpdates.A).breakTimer.endTimeMillis, deadline,
+      'an empty event must not discard the deadline established by a start frame');
+
+    now += 10000;
+    transitionHub.handleOwlcmsMessage({
+      ...start, breakTimerEventType: '', breakMillisRemaining: '230000'
+    }, 'update');
+    assert.equal(extractTimers(transitionHub.fopUpdates.A).breakTimer.endTimeMillis, deadline);
+
+    transitionHub.handleOwlcmsMessage({
+      ...start, breakTimerEventType: '', indefiniteBreak: true, breakMillisRemaining: null
+    }, 'update');
+    assert.equal(transitionHub.fopUpdates.A.breakEndTimeMillis, undefined);
+    assert.equal(extractTimers(transitionHub.fopUpdates.A).breakTimer.visible, false);
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
+console.log('✓ Empty and omitted timer events preserve break deadlines without overriding pauses or indefinite breaks\n');
