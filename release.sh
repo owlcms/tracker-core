@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-REVISION="${1:-2.0.0-beta02}"
+REVISION="${1:-2.0.0-rc01}"
 EXPECTED_BRANCH="${2:-${RELEASE_BRANCH:-master}}"
 set -euo pipefail
 

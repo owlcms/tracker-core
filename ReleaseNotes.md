@@ -1,7 +1,7 @@
 Release Notes
 
 ## Version 2.0
-- 2.0.0-beta02: Break countdowns retain their deadline when update snapshots have an empty or omitted timer event, preventing an early 0:00 while time remains.
+- 2.0.0-rc01: Break countdowns retain their deadline when update snapshots have an empty or omitted timer event, preventing an early 0:00 while time remains.
 - 2.0.0-beta02: Accept the `server_info` message sent when OWLCMS connects and expose its HTTP scheme and port together with the authenticated connection's remote address. Older OWLCMS connections expose the address with the legacy port 8080 fallback.
 - 2.0.0-beta02: Regression coverage confirms signed OWLCMS V2 exports parse identically to unsigned exports. The top-level `signature` is ignored, not verified or included in the normalized database.
 - 2.0.0-beta01: **Requires OWLCMS 69.** The protocol version is 69.0.0 and the minimum accepted version is now 69.0.0.
