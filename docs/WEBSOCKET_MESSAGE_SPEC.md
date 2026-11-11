@@ -584,6 +584,7 @@ On **every `JURY_DECISION` message**, including the Speaker-only ones (`waitForA
   "recordKind": "none",
   "waitForAnnouncer": false,
   "chairEntered": false,
+  "againstVote": false,
   "speakerEntered": false
 }
 ```
@@ -600,7 +601,8 @@ On **every `JURY_DECISION` message**, including the Speaker-only ones (`waitForA
 | `newRecord` | a record was set |
 | `recordKind` | `none`, `new` or `denied` |
 | `waitForAnnouncer` | notification meant for the Speaker only |
-| `chairEntered` | the Jury Chair's override (seven-person panel only) |
+| `chairEntered` | the Jury Chair used the Good Lift / No Lift buttons with no complete vote (informational trace; every jury size) |
+| `againstVote` | the Jury Chair used the Good Lift / No Lift buttons against the result of a complete vote (flagged; never true together with `chairEntered`) |
 | `speakerEntered` | the decision was entered by the Speaker |
 
 No text and no display duration: the tracker translates `JuryNotification.Reversal` / `Confirmed`, `JuryDialog.GoodLiftLabel` / `BadLiftLabel` and `Jury.incorrect.<code>`, and chooses how long to show the decision (5 s on OWLCMS attempt boards). tracker-core keeps it until the next athlete clock start, with its arrival time (`adjudicationDecisionReceivedAt`).
