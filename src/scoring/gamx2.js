@@ -67,6 +67,29 @@ function paramFileName(lift, variant, gender) {
 const paramsCache = new Map();
 
 /**
+ * The reference online calculators (huebner.shinyapps.io GAMX and GAMX_teams) interpolate the SENIOR tables
+ * but look up the age-dependent tables (GAMX-M, GAMX-A, GAMX-U, GAMX-SM, GAMX-JM) at the body mass rounded to
+ * 0.1 kg with R's round(x, 1). false matches the calculators; true interpolates the age-dependent tables too.
+ * Must stay identical to INTERPOLATE_AGE_TABLES in OWLCMS GAMX2.java.
+ */
+const INTERPOLATE_AGE_TABLES = false;
+
+/**
+ * R's round(x, 1): the nearer of the two neighbouring tenths, compared in double arithmetic, and the even tenth
+ * when exactly halfway. 85.15 gives 85.2 but 85.25 and 85.35 give 85.2 and 85.3, as in the reference calculators.
+ */
+function roundToTenthLikeR(x) {
+    const lowTenths = Math.floor(x * 10);
+    const low = lowTenths / 10;
+    const high = Math.ceil(x * 10) / 10;
+    const toLow = x - low;
+    const toHigh = high - x;
+    if (toLow < toHigh) return low;
+    if (toHigh < toLow) return high;
+    return lowTenths % 2 === 0 ? low : high;
+}
+
+/**
  * Get the base path for GAMX JSON files.
  * The tables are delivered lazily by OWLCMS (gamx_zip) and extracted to
  * <cwd>/local/gamx by the hub's binary handler. This is the sole source; no
@@ -293,7 +316,7 @@ function pBCCG(y, mu, sigma, nu) {
  * For tables WITH age column (MASTERS, AGE_ADJUSTED, U17):
  *   params format: [[age, bodyMass, mu, sigma, nu], ...]
  *   - Binary search to find rows matching normalized age
- *   - Then interpolate by body mass within those rows
+ *   - Then use the row at the body mass rounded to 0.1 kg (or interpolate if INTERPOLATE_AGE_TABLES)
  * 
  * @param {Array} params - Parameter table
  * @param {number} bodyMass - Body mass in kg
@@ -348,6 +371,10 @@ function interpolateParams(params, bodyMass, hasAge = false, age = null) {
 
         if (filteredParams.length === 0) {
             return null;
+        }
+
+        if (!INTERPOLATE_AGE_TABLES) {
+            bodyMass = roundToTenthLikeR(bodyMass);
         }
     }
 
