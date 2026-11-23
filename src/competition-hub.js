@@ -16,6 +16,11 @@ import { logLearningModeStatus } from './utils/learning-mode.js';
 import { extractV2Year, parseV2Database } from './protocol/parser-v2.js';
 import { logger } from './utils/logger.js';
 import { extractTimers, computeDisplayMode, extractDecisionState } from './utils/timer-decision-helpers.js';
+import {
+  createDecisionBlockState,
+  updateDecisionBlockState,
+  snapshotDecisionBlock
+} from './utils/decision-block-state.js';
 
 // Pending-resource retry tuning. The loop polls frequently (POLL) but each
 // resource is only re-requested once its own backoff window has elapsed. Real
@@ -398,6 +403,9 @@ export class CompetitionHub extends EventEmitter {
     // Per-FOP latest UPDATE messages (precomputed presentation data)
     // Structure: { 'A': { startOrderAthletes, liftingOrderAthletes, sessionAthletes, ... }, 'B': {...}, ... }
     this.fopUpdates = {};
+
+    // Per-FOP scoreboard decision-block state (20 s hold, deliberation, verdict)
+    this.decisionBlocks = {};
     
     // Per-FOP session status tracking
     // Structure: { 'A': { isDone: true/false, sessionName: 'M1', lastActivity: timestamp }, ... }
@@ -798,6 +806,21 @@ export class CompetitionHub extends EventEmitter {
 
       // Use sessionAthletes payloads to keep database cache fresh
       this._mergeSessionAthletesIntoDatabase(fopName);
+
+      // Update per-FOP scoreboard decision-block state (20 s hold, deliberation, verdict)
+      const block = this._getOrCreateDecisionBlock(fopName);
+      updateDecisionBlockState(block, {
+        messageType,
+        normalizedParams,
+        mergedState,
+        juryEventType,
+        resolveAthlete: (athleteKey, fallbackName) =>
+          this._resolveDecisionBlockAthlete(fopName, athleteKey, fallbackName, mergedState),
+        now
+      });
+      const decisionBlock = snapshotDecisionBlock(block, now);
+      mergedState.decisionBlock = decisionBlock;
+      mergedState.currentAthleteAgeGroups = this._resolveAthleteAgeGroups(mergedState.currentAthleteKey, mergedState);
       
       // Update session status tracking
       this.updateSessionStatus(fopName, normalizedParams);
@@ -843,8 +866,8 @@ export class CompetitionHub extends EventEmitter {
         }
         // logger.info(`[Hub] Timer ${fopName}: ${timerEventType}`);
         // logger.debug(`[Hub] Emitting timer event for FOP ${fopName}: state=${athleteTimer.state}, displayMode=${displayMode}, remaining=${timerPayload.timeRemaining}ms`);
-        this.broadcast({ type: 'timer', fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
-        this.emit('timer', { fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, timestamp: Date.now() });
+        this.broadcast({ type: 'timer', fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, decisionBlock, timestamp: Date.now() });
+        this.emit('timer', { fop: fopName, data: mergedState, timer: timerPayload, breakTimer, displayMode, decisionBlock, timestamp: Date.now() });
       }
       // Decision events send minimal payload but include computed displayMode for full context
       else if (messageType === 'decision') {
@@ -883,8 +906,8 @@ export class CompetitionHub extends EventEmitter {
           logger.info(`[Hub] Decision ${fopName}: ${decisionPayload.type} ref1=${decisionPayload.ref1} ref2=${decisionPayload.ref2} ref3=${decisionPayload.ref3}`);
         }
         // logger.info(`[Hub] Decision ${fopName}: ${decisionEventType}`);
-        this.broadcast({ type: 'decision', fop: fopName, data: mergedState, decision: decisionPayload, displayMode, timestamp: Date.now() });
-        this.emit('decision', { fop: fopName, data: mergedState, decision: decisionPayload, displayMode, timestamp: Date.now() });
+        this.broadcast({ type: 'decision', fop: fopName, data: mergedState, decision: decisionPayload, displayMode, decisionBlock, timestamp: Date.now() });
+        this.emit('decision', { fop: fopName, data: mergedState, decision: decisionPayload, displayMode, decisionBlock, timestamp: Date.now() });
       }
       // Regular updates broadcast fop_update with full data
       else {
@@ -1722,7 +1745,74 @@ export class CompetitionHub extends EventEmitter {
     if (!this.isReady()) {
       return null;
     }
-    return this.fopUpdates[fopName] || null;
+    const update = this.fopUpdates[fopName] || null;
+    if (update && this.decisionBlocks[fopName]) {
+      update.decisionBlock = snapshotDecisionBlock(this.decisionBlocks[fopName], Date.now());
+    }
+    return update;
+  }
+
+  _getOrCreateDecisionBlock(fopName) {
+    if (!this.decisionBlocks[fopName]) {
+      this.decisionBlocks[fopName] = createDecisionBlockState();
+    }
+    return this.decisionBlocks[fopName];
+  }
+
+  _resolveAthleteAgeGroups(athleteKey, mergedState = null) {
+    const normalizedKey = this._normalizeAthleteKey(athleteKey);
+    if (!normalizedKey) return '';
+    const dbAthlete = this.databaseAthleteIndex?.get(normalizedKey) || null;
+    const participations = dbAthlete?.participations;
+    if (!Array.isArray(participations) || participations.length === 0) return '';
+
+    const categories = this.databaseState?.categories;
+    const codeToAgeGroup = new Map();
+    if (Array.isArray(categories)) {
+      for (const cat of categories) {
+        if (cat?.code && cat?.ageGroupCode) {
+          codeToAgeGroup.set(cat.code, cat.ageGroupCode);
+        }
+      }
+    }
+
+    const seen = new Set();
+    const codes = [];
+    for (const participation of participations) {
+      const catCode = participation?.categoryCode;
+      if (!catCode) continue;
+      const agCode = codeToAgeGroup.get(catCode) || '';
+      if (agCode && !seen.has(agCode)) {
+        seen.add(agCode);
+        codes.push(agCode);
+      }
+    }
+    return codes.join(', ');
+  }
+
+  _resolveDecisionBlockAthlete(fopName, athleteKey, fallbackName, mergedState = {}) {
+    const normalizedKey = this._normalizeAthleteKey(athleteKey);
+    const sessionAthletes = Array.isArray(mergedState.startOrderAthletes) ? mergedState.startOrderAthletes : [];
+    let matched = null;
+    if (normalizedKey) {
+      matched = sessionAthletes.find((a) => a && !a.isSpacer && this._normalizeAthleteKey(a.key ?? a.athleteKey) === normalizedKey)
+        || this.databaseAthleteIndex?.get(normalizedKey)
+        || null;
+    }
+    const currentKey = this._normalizeAthleteKey(mergedState.currentAthleteKey);
+    const isCurrent = Boolean(normalizedKey && currentKey && normalizedKey === currentKey);
+    const startNumber = matched?.startNumber ?? (isCurrent || !normalizedKey ? mergedState.startNumber : '') ?? '';
+    const fullName = matched?.fullName || fallbackName || (isCurrent ? mergedState.fullName : '') || '';
+    const ageGroups = this._resolveAthleteAgeGroups(normalizedKey, mergedState);
+    if (!fullName && !startNumber && !normalizedKey) {
+      return null;
+    }
+    return {
+      key: athleteKey ?? null,
+      startNumber: startNumber !== null && startNumber !== undefined ? String(startNumber) : '',
+      fullName,
+      ageGroups
+    };
   }
 
   /**
@@ -3449,6 +3539,7 @@ export class CompetitionHub extends EventEmitter {
     this.state = null;
     this.databaseState = null;
     this.fopUpdates = {};
+    this.decisionBlocks = {};
     this._pendingResources.clear();
     this._stopResourceRetryLoop();
     this.databaseAthleteIndex = new Map();

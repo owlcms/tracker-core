@@ -21,6 +21,21 @@ export { buildCacheKey } from './cache-utils.js';
 // Timer and decision helpers
 export { extractTimers, computeDisplayMode, extractDecisionState, extractTimerAndDecisionState, extractDecisionDisplayDefaults } from './timer-decision-helpers.js';
 
+// Scoreboard decision block state machine (OWLCMS 69 code parity, outcome-only)
+export {
+	DEFAULT_DECISION_BLOCK_HOLD_MS,
+	DECISION_BLOCK_LABEL_KEYS,
+	createDecisionBlockState,
+	updateDecisionBlockState,
+	expireDecisionBlockIfNeeded,
+	snapshotDecisionBlock,
+	resolveReviewLabelKey,
+	formatDecisionBlockVerdict,
+	buildDecisionBlockLabels,
+	refLightsFromBooleans,
+	refLightsFromDecisionPayload
+} from './decision-block-state.js';
+
 // Attempt bar visibility
 export { computeAttemptBarVisibility, hasCurrentAthlete, logAttemptBarDebug } from './attempt-bar-visibility.js';
 

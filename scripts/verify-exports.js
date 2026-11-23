@@ -18,7 +18,12 @@ const REQUIRED_EXPORTS = {
     'extractTimers',
     'computeDisplayMode',
     'extractDecisionState',
-    'extractTimerAndDecisionState'
+    'extractTimerAndDecisionState',
+    'createDecisionBlockState',
+    'updateDecisionBlockState',
+    'snapshotDecisionBlock',
+    'buildDecisionBlockLabels',
+    'formatDecisionBlockVerdict'
   ],
   websocket: [
     'attachWebSocketToServer'
