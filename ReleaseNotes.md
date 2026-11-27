@@ -1,7 +1,10 @@
 Release Notes
 
 ## Version 2.0
-- 2.0.1: Protocol documentation for OWLCMS 69.1 score-based medals: the `showKgLeader` and `showKgDelta` display options and the `age`, `medalKgTop` and `medalKgUp` athlete fields. OWLCMS 69.0 does not send them; the minimum protocol version stays 69.0.0.
+- 2.0.1: Protocol documentation for OWLCMS 69.1 score-based medals. No code change from 2.0.0; the minimum protocol version stays 69.0.0.
+  - Documented the `showKgLeader` and `showKgDelta` display options.
+  - Documented the `age`, `medalKgTop` and `medalKgUp` athlete fields in updates.
+  - Documented the `categoryScoreKgTop` and `categoryScoreKgDelta` participation fields in the database (with the existing `categoryScoreRank` and `categoryScore`).
 - 2.0.0: Track per-FOP scoreboard decision-block state (`decisionBlock`) to allow for display of jury decisions.
 - 2.0.0-rc02: Align GAMX age table lookup for body mass edge cases and document `ruleCode: 0` ("Referee Decision Stands as Called") in `docs/WEBSOCKET_MESSAGE_SPEC.md`.
 - 2.0.0-rc01: Break countdowns retain their deadline when update snapshots have an empty or omitted timer event, preventing an early 0:00 while time remains.

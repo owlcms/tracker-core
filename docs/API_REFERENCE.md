@@ -1466,6 +1466,10 @@ Representative V2 structure returned by `getDatabaseState()` (additional fields 
       snatchRank: number,
       cleanJerkRank: number,
       totalRank: number,
+      categoryScoreRank: number,
+      categoryScore: number,
+      categoryScoreKgTop?: number,
+      categoryScoreKgDelta?: number,
       teamMember: boolean,
       championshipType: string
     }>

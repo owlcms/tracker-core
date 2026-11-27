@@ -71,6 +71,8 @@ Every text frame is a JSON object:
 
 `updateKey` is present in the payload only when a key is configured.
 
+**Fields added by later OWLCMS versions are optional.** The minimum protocol version is 69.0.0, so a consumer may receive messages from any OWLCMS 69.x. Fields marked "(OWLCMS 69.1 and later)" are absent from OWLCMS 69.0 messages: test for their presence, and fall back to the 69.0 behavior when they are missing.
+
 ### Value Encoding
 
 - `timer` payloads, and `decision` payloads except the objects `records`, `decisionState` and `adjudicationDecision`, contain **only string values** (`"true"`, `"60000"`, ...). A field whose value would be `null` is omitted.
@@ -349,7 +351,7 @@ Each `sessionAthletes` entry contains:
 | `fullName` | Formatted with the `FullNameFormat` translation (by default `LASTNAME, Firstname`) |
 | `teamName` | Team name |
 | `yearOfBirth` | Year of birth |
-| `age` | Age, shown instead of the year of birth when medals are awarded by score (OWLCMS 69.1 and later) |
+| `age` | Age (OWLCMS 69.1 and later). Scoreboards show it instead of the year of birth when medals are awarded by score |
 | `gender` | `M` or `F` |
 | `startNumber` | Start number |
 | `lotNumber` | Lot number |
@@ -795,6 +797,10 @@ Signed/unsigned parsing equivalence is covered by a regression test added in
       "snatchRank": 4,
       "cleanJerkRank": 6,
       "totalRank": 5,
+      "categoryScoreRank": 5,
+      "categoryScore": 208.487,
+      "categoryScoreKgTop": 28,
+      "categoryScoreKgDelta": 28,
       "teamMember": true,
       "...": "..."
     }
@@ -806,6 +812,8 @@ Signed/unsigned parsing equivalence is covered by a regression test added in
 - `team` is a numeric team ID; the name is in the `teams` array.
 - `sessionName` is the athlete's session.
 - Attempt values: positive = good lift, negative = failed lift, `null` = not attempted. `Declaration` / `Change1` / `Change2` are requested weights.
+- `categoryScoreRank` is the medal rank in the participation's category: the Total rank when the category awards medals on the Total, the score rank when it awards medals on a score. `categoryScore` is the value ranked (the Total or the score).
+- `categoryScoreKgTop` and `categoryScoreKgDelta` (OWLCMS 69.1 and later) are the kilograms needed to reach the category leader and to move up one rank; `0` for rank 1 and for categories that award medals on the Total. They are the values shown as `medalKgTop` and `medalKgUp` in `displayInfo`, but the database is only sent on connect, on request and after edits, so the `update` messages carry the current values during lifting.
 
 ##### Database vs. Update Athlete Data
 
