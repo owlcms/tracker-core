@@ -156,6 +156,8 @@ Every text frame is a JSON object:
 | `showTotalRank` | Show total rank |
 | `showMedalScore` | Show the medal score column |
 | `medalScoringName` | Title of the medal score column (string) |
+| `showKgLeader` | Show the kilograms-to-lead column |
+| `showKgDelta` | Show the kilograms-to-up-one-rank column |
 | `scoringName` | Title of the best-score column (string) |
 | `showSinclair` | Show the best-score column |
 | `showSinclairRank` | Show the best-score rank column |
@@ -320,6 +322,8 @@ Each `sessionAthletes` entry contains:
     "totalRank": "-",
     "medalRank": "-",
     "medalScore": "",
+    "medalKgTop": "",
+    "medalKgUp": "",
     "medalHighlight": "",
     "sinclair": "-",
     "sinclairRank": "-",
@@ -358,6 +362,8 @@ Each `sessionAthletes` entry contains:
 | `totalRank` | Total rank, or `-` |
 | `medalRank` | Medal rank |
 | `medalScore` | Medal score (empty when medals are not awarded by score) |
+| `medalKgTop` | Kilograms needed to reach the category leader (empty for rank 1 and Total-medal athletes) |
+| `medalKgUp` | Kilograms needed to move up one medal rank (empty for rank 1 and Total-medal athletes) |
 | `medalHighlight` | Medal highlight CSS class (empty on session scoreboards) |
 | `sinclair` | Best score (Sinclair or the configured best-lifter system) |
 | `sinclairRank` | Best-score rank |
