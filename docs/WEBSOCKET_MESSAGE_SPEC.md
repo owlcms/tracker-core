@@ -156,8 +156,8 @@ Every text frame is a JSON object:
 | `showTotalRank` | Show total rank |
 | `showMedalScore` | Show the medal score column |
 | `medalScoringName` | Title of the medal score column (string) |
-| `showKgLeader` | Show the kilograms-to-lead column |
-| `showKgDelta` | Show the kilograms-to-up-one-rank column |
+| `showKgLeader` | Show the kilograms-to-lead column (OWLCMS 69.1 and later) |
+| `showKgDelta` | Show the kilograms-to-up-one-rank column (OWLCMS 69.1 and later) |
 | `scoringName` | Title of the best-score column (string) |
 | `showSinclair` | Show the best-score column |
 | `showSinclairRank` | Show the best-score rank column |
@@ -300,6 +300,7 @@ Each `sessionAthletes` entry contains:
     "fullName": "DOE, John",
     "teamName": "USA Weightlifting",
     "yearOfBirth": "1995",
+    "age": "31",
     "gender": "M",
     "startNumber": "5",
     "lotNumber": "12",
@@ -348,6 +349,7 @@ Each `sessionAthletes` entry contains:
 | `fullName` | Formatted with the `FullNameFormat` translation (by default `LASTNAME, Firstname`) |
 | `teamName` | Team name |
 | `yearOfBirth` | Year of birth |
+| `age` | Age, shown instead of the year of birth when medals are awarded by score (OWLCMS 69.1 and later) |
 | `gender` | `M` or `F` |
 | `startNumber` | Start number |
 | `lotNumber` | Lot number |
@@ -362,8 +364,8 @@ Each `sessionAthletes` entry contains:
 | `totalRank` | Total rank, or `-` |
 | `medalRank` | Medal rank |
 | `medalScore` | Medal score (empty when medals are not awarded by score) |
-| `medalKgTop` | Kilograms needed to reach the category leader (empty for rank 1 and Total-medal athletes) |
-| `medalKgUp` | Kilograms needed to move up one medal rank (empty for rank 1 and Total-medal athletes) |
+| `medalKgTop` | Kilograms needed to reach the category leader (empty for rank 1 and Total-medal athletes; OWLCMS 69.1 and later) |
+| `medalKgUp` | Kilograms needed to move up one medal rank (empty for rank 1 and Total-medal athletes; OWLCMS 69.1 and later) |
 | `medalHighlight` | Medal highlight CSS class (empty on session scoreboards) |
 | `sinclair` | Best score (Sinclair or the configured best-lifter system) |
 | `sinclairRank` | Best-score rank |
